@@ -1,0 +1,21 @@
+on:
+  push:
+  pull_request:
+
+name: Continuous integration
+
+env:
+  RUSTFLAGS: "--deny warnings"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo test
+      - run: cargo test --features staged-mirror
+      - run: cargo test --features staged-patch
+      - run: cargo build
+      - run: cargo build --features staged-mirror
+      - run: cargo build --features staged-patch
