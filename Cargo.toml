@@ -1,0 +1,21 @@
+[package]
+name = "embedded-shadow"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "no_std, no alloc shadow register table with dirty tracking"
+repository = "https://github.com/aq1018/embedded-shadow"
+keywords = ["embedded", "no_std", "registers"]
+categories = ["embedded", "no-std"]
+
+[workspace]
+
+[dependencies]
+critical-section = {version="*", default-features=false}
+heapless = {version="*", default-features=false, optional=true}
+
+[features]
+default = []
+staged = []
+staged-mirror = ["staged"]
+staged-patch = ["staged", "heapless"]
