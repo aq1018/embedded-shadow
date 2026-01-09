@@ -2,11 +2,23 @@
 name = "embedded-shadow"
 version = "0.1.0"
 edition = "2024"
+rust-version = "1.85"
+authors = ["Aaron Qian <aq1018@gmail.com>"]
 license = "MIT OR Apache-2.0"
-description = "no_std, no alloc shadow register table with dirty tracking"
+description = "Zero-alloc shadow register table with dirty tracking for embedded systems"
+documentation = "https://docs.rs/embedded-shadow"
+homepage = "https://github.com/aq1018/embedded-shadow"
 repository = "https://github.com/aq1018/embedded-shadow"
-keywords = ["embedded", "no_std", "registers"]
-categories = ["embedded", "no-std"]
+readme = "README.md"
+keywords = ["embedded", "no-std", "registers", "shadow", "dirty-tracking"]
+categories = ["embedded", "no-std", "no-std::no-alloc", "data-structures"]
+exclude = [
+    "/.github/",
+    "/.claude/",
+    "/.zed/",
+    "/.vscode/",
+    "/.idea/",
+]
 
 [workspace]
 
