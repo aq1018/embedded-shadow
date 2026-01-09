@@ -16,6 +16,11 @@ where
     BitsImpl<BC>: Bits,
 {
     pub(crate) fn new() -> Self {
+        assert!(
+            TS == BS * BC,
+            "Total size must match block size x block count",
+        );
+
         Self {
             bytes: [0; TS],
             dirty: Bitmap::new(),

@@ -1,6 +1,7 @@
 #![deny(unsafe_code)]
 #![no_std]
 
+pub mod builder;
 pub mod error;
 pub mod helpers;
 pub mod persist;
