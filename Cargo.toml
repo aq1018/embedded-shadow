@@ -15,5 +15,8 @@ critical-section = {version="*", default-features=false}
 bitmaps = {version="*", default-features=false}
 heapless = {version="*", default-features=false}
 
+[dev-dependencies]
+critical-section = { version = "1.2", features = ["std"] }
+
 [features]
 default = []
