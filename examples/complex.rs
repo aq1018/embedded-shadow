@@ -1,5 +1,5 @@
 //! Complex example: Real-world embedded system simulation
-//! 
+//!
 //! This simulates a motor controller with:
 //! - Protected bootloader and calibration regions
 //! - Staged parameter updates with validation
@@ -32,7 +32,7 @@ impl MotorControllerPolicy {
             calibration_unlocked: false,
         }
     }
-    
+
     fn unlock_calibration(&mut self) {
         self.calibration_unlocked = true;
     }
@@ -42,26 +42,26 @@ impl AccessPolicy for MotorControllerPolicy {
     fn can_read(&self, _addr: u16, _len: usize) -> bool {
         true // All regions readable
     }
-    
+
     fn can_write(&self, addr: u16, len: usize) -> bool {
         let end = addr.saturating_add(len as u16);
-        
+
         match addr {
             // Bootloader - never writable
             0x0000..=0x00FF => false,
-            
+
             // Calibration - only if unlocked
             0x0100..=0x01FF => self.calibration_unlocked && end <= 0x0200,
-            
+
             // User config - always writable
             0x0200..=0x02FF => end <= 0x0300,
-            
+
             // Control registers - always writable
             0x0300..=0x03FF => end <= 0x0400,
-            
+
             // Telemetry - always writable
             0x0400..=0x07FF => end <= 0x0800,
-            
+
             _ => false,
         }
     }
@@ -76,24 +76,24 @@ impl PersistPolicy<PersistKey> for MotorPersistPolicy {
         F: FnMut(PersistKey),
     {
         let end = addr.saturating_add(len as u16);
-        
+
         // Check if write touches any persistent region
         let mut needs_persist = false;
-        
+
         // Calibration data (if touched, save it)
         if addr < 0x0200 && end > 0x0100 {
             push_key(PersistKey::Calibration);
             needs_persist = true;
         }
-        
+
         // User configuration (if touched, save it)
         if addr < 0x0300 && end > 0x0200 {
             push_key(PersistKey::UserConfig);
             needs_persist = true;
         }
-        
+
         // Control and telemetry are volatile, don't persist
-        
+
         needs_persist
     }
 }
@@ -127,7 +127,7 @@ impl PersistTrigger<PersistKey> for SmartPersistTrigger {
             let _ = self.pending.push(key);
         }
     }
-    
+
     fn request_persist(&mut self) {
         for key in self.pending.iter() {
             match key {
@@ -161,42 +161,42 @@ struct MotorController {
 pub fn main() {
     // Create the complete motor controller shadow system
     let mut access_policy = MotorControllerPolicy::new();
-    
+
     // Note: In real code, we'd need to pass access_policy by value,
     // but for demo we'll create a new one
     let storage = ShadowStorageBuilder::new()
-        .total_size::<2048>()  // 2KB total
-        .block_size::<64>()    // 64-byte blocks
-        .block_count::<32>()   // 32 blocks
+        .total_size::<2048>() // 2KB total
+        .block_size::<64>() // 64-byte blocks
+        .block_count::<32>() // 32 blocks
         .access_policy(MotorControllerPolicy::new())
         .persist_policy(MotorPersistPolicy)
         .persist_trigger(SmartPersistTrigger::new())
         .build();
-    
+
     // Add staging for atomic parameter updates
     let staging_buffer = PatchStagingBuffer::<256, 16>::new();
     let staged_storage = storage.with_staging(staging_buffer);
-    
+
     let host = staged_storage.host_shadow();
     let kernel = staged_storage.kernel_shadow();
-    
+
     // ========== Initialize System ==========
     host.with_view(|view| {
         // Load default user configuration
         let default_config = [
-            0x01, 0x00,  // Max speed: 256 RPM
-            0x64, 0x00,  // Acceleration: 100 units
-            0x32, 0x00,  // Deceleration: 50 units
-            0x00, 0x01,  // PID P: 1.0
-            0x00, 0x02,  // PID I: 2.0
-            0x00, 0x01,  // PID D: 1.0
+            0x01, 0x00, // Max speed: 256 RPM
+            0x64, 0x00, // Acceleration: 100 units
+            0x32, 0x00, // Deceleration: 50 units
+            0x00, 0x01, // PID P: 1.0
+            0x00, 0x02, // PID I: 2.0
+            0x00, 0x01, // PID D: 1.0
         ];
         view.write_range(0x200, &default_config).unwrap();
-        
+
         // Initialize control registers
         view.write_range(0x300, &[0x00; 16]).unwrap(); // All stop
     });
-    
+
     // ========== Runtime Operation ==========
     let mut controller = MotorController {
         speed_setpoint: 0,
@@ -204,26 +204,27 @@ pub fn main() {
         temperature: 25,
         error_count: 0,
     };
-    
+
     // Simulate parameter update with validation
     host.with_view(|view| {
         // Stage new PID parameters
         view.write_range_staged(0x206, &[0x00, 0x03]).unwrap(); // New P: 3.0
         view.write_range_staged(0x208, &[0x00, 0x04]).unwrap(); // New I: 4.0
         view.write_range_staged(0x20A, &[0x00, 0x02]).unwrap(); // New D: 2.0
-        
+
         // Validate staged parameters
         let mut p_value = [0u8; 2];
         view.read_range_overlay(0x206, &mut p_value).unwrap();
         let p = u16::from_le_bytes(p_value);
-        
-        if p <= 10 {  // Validation passed
+
+        if p <= 10 {
+            // Validation passed
             // Commit the staged changes
             view.action().unwrap();
         }
         // Otherwise staged changes are discarded
     });
-    
+
     // Simulate control loop
     for cycle in 0..10 {
         // Host updates control registers
@@ -231,9 +232,9 @@ pub fn main() {
             controller.speed_setpoint = 100 + cycle * 10;
             let setpoint_bytes = controller.speed_setpoint.to_le_bytes();
             view.write_range(0x300, &setpoint_bytes).unwrap();
-            
+
             // Update telemetry
-            let telemetry_offset = 0x400 + (cycle * 8) as u16;
+            let telemetry_offset = 0x400 + cycle * 8;
             let telemetry = [
                 controller.current_speed.to_le_bytes()[0],
                 controller.current_speed.to_le_bytes()[1],
@@ -246,7 +247,7 @@ pub fn main() {
             ];
             view.write_range(telemetry_offset, &telemetry).unwrap();
         });
-        
+
         // Kernel syncs to hardware
         kernel.with_view(|view| {
             // Process control registers
@@ -258,21 +259,23 @@ pub fn main() {
                         let _ = data;
                     }
                     Ok(())
-                }).unwrap();
-                
+                })
+                .unwrap();
+
                 view.clear_dirty();
             }
         });
-        
+
         // Simulate motor response
-        controller.current_speed = controller.current_speed * 9 / 10 + controller.speed_setpoint / 10;
+        controller.current_speed =
+            controller.current_speed * 9 / 10 + controller.speed_setpoint / 10;
         controller.temperature += 1;
     }
-    
+
     // ========== Calibration Mode ==========
     // Special sequence to update calibration
     access_policy.unlock_calibration();
-    
+
     // Now we can update calibration (in real system, would recreate storage with unlocked policy)
     let storage_unlocked = ShadowStorageBuilder::new()
         .total_size::<2048>()
@@ -282,15 +285,15 @@ pub fn main() {
         .persist_policy(MotorPersistPolicy)
         .persist_trigger(SmartPersistTrigger::new())
         .build();
-    
+
     let host_unlocked = storage_unlocked.host_shadow();
-    
+
     host_unlocked.with_view(|view| {
         // Update motor calibration constants
         let calibration = [
-            0xFF, 0x03,  // Motor constant
-            0x20, 0x00,  // Offset
-            0x10, 0x00,  // Scale factor
+            0xFF, 0x03, // Motor constant
+            0x20, 0x00, // Offset
+            0x10, 0x00, // Scale factor
         ];
         view.write_range(0x100, &calibration).unwrap();
         // This triggers immediate persistence due to calibration policy

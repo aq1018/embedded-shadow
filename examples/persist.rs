@@ -1,5 +1,5 @@
 //! Persistence example: Managing what and when to persist
-//! 
+//!
 //! This example demonstrates:
 //! - Custom persist policies to determine what needs saving
 //! - Custom persist triggers to batch and execute saves
@@ -32,13 +32,13 @@ impl PersistPolicy<u16> for FlashSectorPolicy {
         // Calculate which sectors are affected
         let start_sector = addr / self.sector_size;
         let end_addr = addr + len as u16;
-        let end_sector = (end_addr + self.sector_size - 1) / self.sector_size;
-        
+        let end_sector = end_addr.div_ceil(self.sector_size);
+
         // Push each affected sector as a persist key
         for sector in start_sector..end_sector {
             push_key(sector * self.sector_size); // Use sector base address as key
         }
-        
+
         // Return true to request persistence
         true
     }
@@ -55,9 +55,9 @@ impl PersistPolicy<u16> for CriticalRegisterPolicy {
         // Critical registers are at 0x00-0x1F
         const CRITICAL_START: u16 = 0x00;
         const CRITICAL_END: u16 = 0x20;
-        
+
         let end_addr = addr + len as u16;
-        
+
         // Check if this write touches critical registers
         if addr < CRITICAL_END && end_addr > CRITICAL_START {
             // Push the exact range as key for precise persistence
@@ -84,7 +84,7 @@ impl BatchedFlashTrigger {
             batch_size,
         }
     }
-    
+
     fn do_persist(&mut self) {
         // In real code, this would write to flash
         // For demo, we just track what would be written
@@ -95,7 +95,7 @@ impl BatchedFlashTrigger {
                 // flash_driver.write_sector(*sector, data);
                 let _ = sector; // Suppress unused warning
             }
-            
+
             self.pending_sectors.clear();
             self.write_count = 0;
         }
@@ -108,10 +108,10 @@ impl PersistTrigger<u16> for BatchedFlashTrigger {
         if !self.pending_sectors.contains(&sector_addr) {
             let _ = self.pending_sectors.push(sector_addr);
         }
-        
+
         self.write_count += 1;
     }
-    
+
     fn request_persist(&mut self) {
         // Only persist if we've accumulated enough writes
         if self.write_count >= self.batch_size {
@@ -138,7 +138,7 @@ impl PersistTrigger<u16> for ImmediatePersistTrigger {
     fn push_key(&mut self, addr: u16) {
         self.last_persisted_addr = Some(addr);
     }
-    
+
     fn request_persist(&mut self) {
         if let Some(addr) = self.last_persisted_addr {
             // Immediately persist critical data
@@ -158,26 +158,26 @@ pub fn main() {
 fn example_flash_sectors() {
     // Setup with 4KB flash sectors
     let storage = ShadowStorageBuilder::new()
-        .total_size::<16384>()  // 16KB total
-        .block_size::<256>()    // 256-byte dirty blocks
-        .block_count::<64>()    // 64 blocks
+        .total_size::<16384>() // 16KB total
+        .block_size::<256>() // 256-byte dirty blocks
+        .block_count::<64>() // 64 blocks
         .default_access()
-        .persist_policy(FlashSectorPolicy::new(4096))  // 4KB sectors
-        .persist_trigger(BatchedFlashTrigger::new(4))  // Batch 4 writes
+        .persist_policy(FlashSectorPolicy::new(4096)) // 4KB sectors
+        .persist_trigger(BatchedFlashTrigger::new(4)) // Batch 4 writes
         .build();
-    
+
     let host = storage.host_shadow();
-    
+
     host.with_view(|view| {
         // Small writes accumulate
-        view.write_range(0x100, &[0x01; 32]).unwrap();  // Sector 0
-        view.write_range(0x200, &[0x02; 32]).unwrap();  // Sector 0
-        view.write_range(0x300, &[0x03; 32]).unwrap();  // Sector 0
-        
+        view.write_range(0x100, &[0x01; 32]).unwrap(); // Sector 0
+        view.write_range(0x200, &[0x02; 32]).unwrap(); // Sector 0
+        view.write_range(0x300, &[0x03; 32]).unwrap(); // Sector 0
+
         // Fourth write triggers batch persistence
         view.write_range(0x1000, &[0x04; 32]).unwrap(); // Sector 1
         // BatchedFlashTrigger would now persist sectors 0 and 1
-        
+
         // Write to another sector
         view.write_range(0x2000, &[0x05; 32]).unwrap(); // Sector 2
         // Not persisted yet, waiting for more writes
@@ -193,18 +193,18 @@ fn example_critical_registers() {
         .persist_policy(CriticalRegisterPolicy)
         .persist_trigger(ImmediatePersistTrigger::new())
         .build();
-    
+
     let host = storage.host_shadow();
-    
+
     host.with_view(|view| {
         // Write to critical register - persists immediately
         view.write_range(0x10, &[0xFF; 4]).unwrap();
         // ImmediatePersistTrigger executes right away
-        
+
         // Write to non-critical area - not persisted
         view.write_range(0x80, &[0xAA; 4]).unwrap();
         // No persistence triggered
-        
+
         // Another critical write - persists immediately
         view.write_range(0x00, &[0x12, 0x34]).unwrap();
         // ImmediatePersistTrigger executes again
@@ -214,7 +214,7 @@ fn example_critical_registers() {
 fn example_selective_persistence() {
     /// Policy that only persists configuration blocks
     struct ConfigOnlyPolicy;
-    
+
     impl PersistPolicy<&'static str> for ConfigOnlyPolicy {
         fn push_persist_keys_for_range<F>(&self, addr: u16, _len: usize, mut push_key: F) -> bool
         where
@@ -238,12 +238,12 @@ fn example_selective_persistence() {
             }
         }
     }
-    
+
     /// Trigger that groups by configuration type
     struct ConfigGroupTrigger {
         pending: Vec<&'static str, 8>,
     }
-    
+
     impl ConfigGroupTrigger {
         fn new() -> Self {
             Self {
@@ -251,14 +251,14 @@ fn example_selective_persistence() {
             }
         }
     }
-    
+
     impl PersistTrigger<&'static str> for ConfigGroupTrigger {
         fn push_key(&mut self, config_type: &'static str) {
             if !self.pending.contains(&config_type) {
                 let _ = self.pending.push(config_type);
             }
         }
-        
+
         fn request_persist(&mut self) {
             // Persist each configuration type
             for config in self.pending.iter() {
@@ -278,7 +278,7 @@ fn example_selective_persistence() {
             self.pending.clear();
         }
     }
-    
+
     let storage = ShadowStorageBuilder::new()
         .total_size::<1024>()
         .block_size::<64>()
@@ -287,19 +287,19 @@ fn example_selective_persistence() {
         .persist_policy(ConfigOnlyPolicy)
         .persist_trigger(ConfigGroupTrigger::new())
         .build();
-    
+
     let host = storage.host_shadow();
-    
+
     host.with_view(|view| {
         // Write to config area - will persist
-        view.write_range(0x050, &[0x11; 8]).unwrap();  // boot_config
-        
+        view.write_range(0x050, &[0x11; 8]).unwrap(); // boot_config
+
         // Write to data area - won't persist
-        view.write_range(0x300, &[0x22; 8]).unwrap();  // Not config
-        
+        view.write_range(0x300, &[0x22; 8]).unwrap(); // Not config
+
         // Write to different config - will persist separately
-        view.write_range(0x150, &[0x33; 8]).unwrap();  // app_config
-        
+        view.write_range(0x150, &[0x33; 8]).unwrap(); // app_config
+
         // ConfigGroupTrigger will persist boot_config and app_config
     });
 }
