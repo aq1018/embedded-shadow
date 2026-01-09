@@ -13,12 +13,27 @@ use crate::{
     types::StagingBuffer,
 };
 
+/// Marker type for storage without staging support.
 pub struct NoStage;
 
+/// Wrapper for storage with staging support.
 pub struct WithStage<SB: StagingBuffer> {
     pub(crate) sb: SB,
 }
 
+/// Core shadow table storage with configurable policies.
+///
+/// # Const Generics
+/// - `TS`: Total size of the shadow table in bytes
+/// - `BS`: Block size in bytes for dirty tracking granularity
+/// - `BC`: Block count (must equal `TS / BS`)
+///
+/// # Type Parameters
+/// - `AP`: Access policy controlling read/write permissions
+/// - `PP`: Persist policy determining what needs persistence
+/// - `PT`: Persist trigger receiving persistence requests
+/// - `PK`: Persist key type used to identify regions
+/// - `SS`: Stage state (`NoStage` or `WithStage<SB>`)
 pub struct ShadowStorageBase<const TS: usize, const BS: usize, const BC: usize, AP, PP, PT, PK, SS>
 where
     AP: AccessPolicy,
@@ -34,6 +49,7 @@ where
     _phantom: PhantomData<PK>,
 }
 
+/// Shadow storage without staging support (type alias).
 pub type ShadowStorage<const TS: usize, const BS: usize, const BC: usize, AP, PP, PT, PK> =
     ShadowStorageBase<TS, BS, BC, AP, PP, PT, PK, NoStage>;
 

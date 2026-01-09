@@ -1,5 +1,10 @@
 use crate::table::ShadowTable;
 
+/// Hardware/kernel-side view of the shadow table.
+///
+/// Provides read/write access without marking blocks dirty, plus
+/// methods to query and clear dirty state. Used by hardware drivers
+/// to sync shadow data to/from actual hardware registers.
 pub struct KernelView<'a, const TS: usize, const BS: usize, const BC: usize>
 where
     bitmaps::BitsImpl<BC>: bitmaps::Bits,
@@ -20,15 +25,20 @@ impl<'a, const TS: usize, const BS: usize, const BC: usize> KernelView<'a, TS, B
 where
     bitmaps::BitsImpl<BC>: bitmaps::Bits,
 {
+    /// Reads data from the shadow table without marking dirty.
     pub fn read_range(&self, addr: u16, out: &mut [u8]) -> Result<(), crate::ShadowError> {
         self.table.read_range(addr, out)
     }
 
+    /// Writes data to the shadow table without marking dirty.
+    ///
+    /// Use this to update the shadow after reading from hardware.
     pub fn write_range(&mut self, addr: u16, data: &[u8]) -> Result<(), crate::ShadowError> {
         self.table.write_range(addr, data)?;
         Ok(())
     }
 
+    /// Iterates over each dirty block, providing its address and data.
     pub fn for_each_dirty_block<F>(&self, mut f: F) -> Result<(), crate::ShadowError>
     where
         F: FnMut(u16, &[u8]) -> Result<(), crate::ShadowError>,
@@ -36,14 +46,17 @@ where
         self.table.for_each_dirty_block(|addr, data| f(addr, data))
     }
 
+    /// Returns true if any block overlapping the given range is dirty.
     pub fn is_dirty(&self, addr: u16, len: usize) -> Result<bool, crate::ShadowError> {
         self.table.is_dirty(addr, len)
     }
 
+    /// Returns true if any block in the table is dirty.
     pub fn any_dirty(&self) -> bool {
         self.table.any_dirty()
     }
 
+    /// Clears all dirty flags in the table.
     pub fn clear_dirty(&mut self) {
         self.table.clear_dirty()
     }

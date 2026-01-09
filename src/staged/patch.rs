@@ -9,6 +9,9 @@ struct StagedWrite {
     off: u16, // offset into data vec
 }
 
+/// Fixed-capacity staging buffer for transactional writes.
+///
+/// `DC` is the data capacity in bytes, `EC` is the max number of entries.
 pub struct PatchStagingBuffer<const DC: usize, const EC: usize> {
     data: Vec<u8, DC>,
     entries: Vec<StagedWrite, EC>,

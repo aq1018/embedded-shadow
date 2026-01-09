@@ -3,6 +3,10 @@ use core::marker::PhantomData;
 use crate::{AccessPolicy, PersistTrigger, ShadowError, policy::PersistPolicy, table::ShadowTable};
 use bitmaps::{Bits, BitsImpl};
 
+/// Application/host-side view of the shadow table.
+///
+/// Writes through this view mark blocks dirty and may trigger persistence.
+/// Reads and writes are subject to the configured access policy.
 pub struct HostView<'a, const TS: usize, const BS: usize, const BC: usize, AP, PP, PT, PK>
 where
     BitsImpl<BC>: Bits,
@@ -40,6 +44,9 @@ where
         }
     }
 
+    /// Reads data from the shadow table.
+    ///
+    /// Returns `Denied` if the access policy rejects the read.
     pub fn read_range(&self, addr: u16, out: &mut [u8]) -> Result<(), ShadowError> {
         if !self.access_policy.can_read(addr, out.len()) {
             return Err(ShadowError::Denied);
@@ -47,7 +54,9 @@ where
         self.table.read_range(addr, out)
     }
 
-    /// Host write: marks dirty + may request persistence.
+    /// Writes data to the shadow table, marking blocks dirty.
+    ///
+    /// May trigger persistence based on the configured policy.
     pub fn write_range(&mut self, addr: u16, data: &[u8]) -> Result<(), ShadowError> {
         self.write_range_no_persist(addr, data)?;
 

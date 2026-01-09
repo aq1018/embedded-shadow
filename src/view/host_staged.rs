@@ -1,6 +1,9 @@
 use crate::{AccessPolicy, HostView, PersistTrigger, policy::PersistPolicy, types::StagingBuffer};
 use bitmaps::{Bits, BitsImpl};
 
+/// Host view with transactional staging support.
+///
+/// Allows writes to be staged and previewed before committing to the shadow table.
 pub struct HostViewStaged<'a, const TS: usize, const BS: usize, const BC: usize, AP, PP, PT, PK, SB>
 where
     AP: AccessPolicy,
@@ -26,14 +29,17 @@ where
         Self { base, sb }
     }
 
+    /// Reads data from the shadow table (ignores staged writes).
     pub fn read_range(&self, addr: u16, out: &mut [u8]) -> Result<(), crate::ShadowError> {
         self.base.read_range(addr, out)
     }
 
+    /// Writes directly to the shadow table, bypassing staging.
     pub fn write_range(&mut self, addr: u16, data: &[u8]) -> Result<(), crate::ShadowError> {
         self.base.write_range(addr, data)
     }
 
+    /// Reads data with staged writes overlaid on top.
     pub fn read_range_overlay(&self, addr: u16, out: &mut [u8]) -> Result<(), crate::ShadowError> {
         if !self.base.access_policy.can_read(addr, out.len()) {
             return Err(crate::ShadowError::Denied);
@@ -44,6 +50,7 @@ where
         Ok(())
     }
 
+    /// Stages a write to be applied on commit.
     pub fn write_range_staged(&mut self, addr: u16, data: &[u8]) -> Result<(), crate::ShadowError> {
         if !self.base.access_policy.can_write(addr, data.len()) {
             return Err(crate::ShadowError::Denied);

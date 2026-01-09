@@ -1,8 +1,12 @@
+/// Controls read/write access to shadow table regions.
 pub trait AccessPolicy {
+    /// Returns true if reading from `addr` for `len` bytes is allowed.
     fn can_read(&self, addr: u16, len: usize) -> bool;
+    /// Returns true if writing to `addr` for `len` bytes is allowed.
     fn can_write(&self, addr: u16, len: usize) -> bool;
 }
 
+/// Default policy that allows all reads and writes.
 #[derive(Default)]
 pub struct AllowAllPolicy {}
 
@@ -16,12 +20,15 @@ impl AccessPolicy for AllowAllPolicy {
     }
 }
 
+/// Determines which regions require persistence and emits keys for them.
 pub trait PersistPolicy<PK> {
+    /// Pushes persistence keys for the given range and returns true if persistence is needed.
     fn push_persist_keys_for_range<F>(&self, addr: u16, len: usize, push_key: F) -> bool
     where
         F: FnMut(PK);
 }
 
+/// Default policy that never triggers persistence.
 #[derive(Default)]
 pub struct NoPersistPolicy {}
 
