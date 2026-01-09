@@ -20,3 +20,10 @@ target
 
 # Ignore Cargo.lock since this is a library project
 Cargo.lock
+
+# AI files
+.claude/
+.copilot/
+.cursor/
+*.transit.json
+CLAUDE.local.md
