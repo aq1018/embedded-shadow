@@ -9,9 +9,3 @@ pub trait StagingBuffer {
     where
         F: FnMut(u16, &[u8]) -> Result<(), ShadowError>;
 }
-
-pub trait StagingOps {
-    fn write_range_staged(&mut self, addr: u16, data: &[u8]) -> Result<(), ShadowError>;
-    fn read_range_overlay(&self, addr: u16, out: &mut [u8]) -> Result<(), ShadowError>;
-    fn clear_staged(&mut self) -> Result<(), ShadowError>;
-}
