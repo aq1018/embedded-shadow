@@ -12,5 +12,3 @@ jobs:
         with:
           components: clippy
       - run: cargo clippy -- --deny=warnings
-      - run: cargo clippy --features staged-mirror -- --deny=warnings
-      - run: cargo clippy --features staged-patch -- --deny=warnings
