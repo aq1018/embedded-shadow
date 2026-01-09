@@ -89,3 +89,171 @@ where
         self.commit()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::ShadowError;
+    use crate::persist::NoPersist;
+    use crate::policy::{AllowAllPolicy, NoPersistPolicy};
+    use crate::staged::PatchStagingBuffer;
+    use crate::test_support::{DenyAllPolicy, TestTable};
+    use crate::view::HostView;
+
+    use super::*;
+
+    type TestStage = PatchStagingBuffer<64, 8>;
+
+    #[test]
+    fn commit_applies_staged_writes_to_table() {
+        let mut table = TestTable::new();
+        let policy = AllowAllPolicy::default();
+        let persist_policy = NoPersistPolicy::default();
+        let mut trigger = NoPersist;
+        let mut stage = TestStage::new();
+
+        {
+            let base = HostView::new(&mut table, &policy, &persist_policy, &mut trigger);
+            let mut view = HostViewStaged::new(base, &mut stage);
+
+            view.write_range_staged(0, &[0xAA, 0xBB, 0xCC, 0xDD])
+                .unwrap();
+            view.commit().unwrap();
+        }
+
+        // Data should be in the table
+        let mut buf = [0u8; 4];
+        table.read_range(0, &mut buf).unwrap();
+        assert_eq!(buf, [0xAA, 0xBB, 0xCC, 0xDD]);
+    }
+
+    #[test]
+    fn commit_marks_affected_blocks_dirty() {
+        let mut table = TestTable::new();
+        let policy = AllowAllPolicy::default();
+        let persist_policy = NoPersistPolicy::default();
+        let mut trigger = NoPersist;
+        let mut stage = TestStage::new();
+
+        // Stage data but don't commit yet
+        {
+            let base = HostView::new(&mut table, &policy, &persist_policy, &mut trigger);
+            let mut view = HostViewStaged::new(base, &mut stage);
+            view.write_range_staged(0, &[0x01; 4]).unwrap();
+        }
+
+        // Not dirty yet (staged only)
+        assert!(!table.any_dirty());
+
+        // Now commit
+        {
+            let base = HostView::new(&mut table, &policy, &persist_policy, &mut trigger);
+            let mut view = HostViewStaged::new(base, &mut stage);
+            view.commit().unwrap();
+        }
+
+        assert!(table.is_dirty(0, 4).unwrap());
+    }
+
+    #[test]
+    fn commit_clears_staging_buffer() {
+        let mut table = TestTable::new();
+        let policy = AllowAllPolicy::default();
+        let persist_policy = NoPersistPolicy::default();
+        let mut trigger = NoPersist;
+        let mut stage = TestStage::new();
+
+        {
+            let base = HostView::new(&mut table, &policy, &persist_policy, &mut trigger);
+            let mut view = HostViewStaged::new(base, &mut stage);
+
+            view.write_range_staged(0, &[0x01; 4]).unwrap();
+            view.commit().unwrap();
+        }
+
+        assert!(!stage.any_staged());
+    }
+
+    #[test]
+    fn commit_empty_buffer_is_noop() {
+        let mut table = TestTable::new();
+        let policy = AllowAllPolicy::default();
+        let persist_policy = NoPersistPolicy::default();
+        let mut trigger = NoPersist;
+        let mut stage = TestStage::new();
+
+        {
+            let base = HostView::new(&mut table, &policy, &persist_policy, &mut trigger);
+            let mut view = HostViewStaged::new(base, &mut stage);
+
+            // Commit without staging anything
+            view.commit().unwrap();
+        }
+
+        assert!(!table.any_dirty());
+    }
+
+    #[test]
+    fn read_range_overlay_shows_staged_data() {
+        let mut table = TestTable::new();
+        table.write_range(0, &[0x11, 0x22, 0x33, 0x44]).unwrap();
+
+        let policy = AllowAllPolicy::default();
+        let persist_policy = NoPersistPolicy::default();
+        let mut trigger = NoPersist;
+        let mut stage = TestStage::new();
+
+        let base = HostView::new(&mut table, &policy, &persist_policy, &mut trigger);
+        let mut view = HostViewStaged::new(base, &mut stage);
+
+        // Stage a write that partially overlaps
+        view.write_range_staged(2, &[0xAA, 0xBB]).unwrap();
+
+        let mut buf = [0u8; 4];
+        view.read_range_overlay(0, &mut buf).unwrap();
+
+        // First two from table, last two from staged
+        assert_eq!(buf, [0x11, 0x22, 0xAA, 0xBB]);
+    }
+
+    #[test]
+    fn read_range_ignores_staged_data() {
+        let mut table = TestTable::new();
+        table.write_range(0, &[0x11, 0x22, 0x33, 0x44]).unwrap();
+
+        let policy = AllowAllPolicy::default();
+        let persist_policy = NoPersistPolicy::default();
+        let mut trigger = NoPersist;
+        let mut stage = TestStage::new();
+
+        let base = HostView::new(&mut table, &policy, &persist_policy, &mut trigger);
+        let mut view = HostViewStaged::new(base, &mut stage);
+
+        // Stage a write
+        view.write_range_staged(0, &[0xAA; 4]).unwrap();
+
+        // Regular read should show table data, not staged
+        let mut buf = [0u8; 4];
+        view.read_range(0, &mut buf).unwrap();
+        assert_eq!(buf, [0x11, 0x22, 0x33, 0x44]);
+    }
+
+    #[test]
+    fn staged_write_checks_access_policy() {
+        let mut table = TestTable::new();
+        let policy = DenyAllPolicy;
+        let persist_policy = NoPersistPolicy::default();
+        let mut trigger = NoPersist;
+        let mut stage = TestStage::new();
+
+        let base = HostView::new(&mut table, &policy, &persist_policy, &mut trigger);
+        let mut view = HostViewStaged::new(base, &mut stage);
+
+        assert_eq!(
+            view.write_range_staged(0, &[0x01; 4]),
+            Err(ShadowError::Denied)
+        );
+
+        // Nothing should be staged
+        assert!(!stage.any_staged());
+    }
+}

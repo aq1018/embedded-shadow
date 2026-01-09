@@ -112,3 +112,132 @@ impl<const DC: usize, const EC: usize> StagingBuffer for PatchStagingBuffer<DC, 
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_support::TestStage;
+
+    #[test]
+    fn write_staged_accumulates_entries() {
+        let mut stage = TestStage::new();
+
+        assert!(!stage.any_staged());
+
+        stage.write_staged(0, &[0x01, 0x02]).unwrap();
+        assert!(stage.any_staged());
+
+        stage.write_staged(10, &[0x03, 0x04]).unwrap();
+
+        let mut count = 0;
+        stage
+            .for_each_staged(|_, _| {
+                count += 1;
+                Ok(())
+            })
+            .unwrap();
+        assert_eq!(count, 2);
+    }
+
+    #[test]
+    fn stage_full_on_data_overflow() {
+        let mut stage = TestStage::new();
+
+        // Fill most of the data buffer (64 bytes capacity)
+        stage.write_staged(0, &[0xFF; 60]).unwrap();
+
+        // This should fail - only 4 bytes left but trying to write 8
+        assert_eq!(
+            stage.write_staged(100, &[0xAA; 8]),
+            Err(ShadowError::StageFull)
+        );
+    }
+
+    #[test]
+    fn stage_full_on_entry_overflow() {
+        let mut stage = TestStage::new();
+
+        // Fill all entry slots (8 max)
+        for i in 0..8 {
+            stage.write_staged(i * 2, &[0x01]).unwrap();
+        }
+
+        // 9th entry should fail
+        assert_eq!(
+            stage.write_staged(100, &[0x01]),
+            Err(ShadowError::StageFull)
+        );
+    }
+
+    #[test]
+    fn clear_staged_empties_buffer() {
+        let mut stage = TestStage::new();
+        stage.write_staged(0, &[0x01, 0x02, 0x03]).unwrap();
+        stage.write_staged(10, &[0x04, 0x05]).unwrap();
+
+        assert!(stage.any_staged());
+
+        stage.clear_staged().unwrap();
+
+        assert!(!stage.any_staged());
+    }
+
+    #[test]
+    fn apply_overlay_no_overlap_unchanged() {
+        let mut stage = TestStage::new();
+
+        // Stage write at address 20-23
+        stage.write_staged(20, &[0xAA, 0xBB, 0xCC, 0xDD]).unwrap();
+
+        // Read range 0-3 (no overlap with staged)
+        let mut out = [0x11, 0x22, 0x33, 0x44];
+        stage.apply_overlay(0, &mut out).unwrap();
+
+        // Output unchanged
+        assert_eq!(out, [0x11, 0x22, 0x33, 0x44]);
+    }
+
+    #[test]
+    fn apply_overlay_full_overlap() {
+        let mut stage = TestStage::new();
+
+        // Stage write at address 0-3
+        stage.write_staged(0, &[0xAA, 0xBB, 0xCC, 0xDD]).unwrap();
+
+        // Read range 0-3 (full overlap)
+        let mut out = [0x00; 4];
+        stage.apply_overlay(0, &mut out).unwrap();
+
+        assert_eq!(out, [0xAA, 0xBB, 0xCC, 0xDD]);
+    }
+
+    #[test]
+    fn apply_overlay_partial_overlap_start() {
+        let mut stage = TestStage::new();
+
+        // Stage write at address 4-7
+        stage.write_staged(4, &[0xAA, 0xBB, 0xCC, 0xDD]).unwrap();
+
+        // Read range 0-7 (overlaps staged at 4-7)
+        let mut out = [0x00; 8];
+        stage.apply_overlay(0, &mut out).unwrap();
+
+        // First 4 bytes unchanged, last 4 have staged data
+        assert_eq!(out, [0x00, 0x00, 0x00, 0x00, 0xAA, 0xBB, 0xCC, 0xDD]);
+    }
+
+    #[test]
+    fn apply_overlay_multiple_overlapping_writes() {
+        let mut stage = TestStage::new();
+
+        // Stage two overlapping writes at same address
+        stage.write_staged(0, &[0x11, 0x22, 0x33, 0x44]).unwrap();
+        stage.write_staged(2, &[0xAA, 0xBB]).unwrap(); // Overwrites bytes 2-3
+
+        let mut out = [0x00; 4];
+        stage.apply_overlay(0, &mut out).unwrap();
+
+        // Later write wins for overlapping region
+        assert_eq!(out, [0x11, 0x22, 0xAA, 0xBB]);
+    }
+}

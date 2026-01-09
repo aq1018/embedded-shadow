@@ -122,3 +122,98 @@ where
         critical_section::with(|_| unsafe { self.load_defaults_unchecked(f) })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::test_support::test_storage;
+
+    #[test]
+    fn load_defaults_writes_data_without_marking_dirty() {
+        let storage = test_storage();
+
+        storage
+            .load_defaults(|write| {
+                write(0, &[0x11, 0x22, 0x33, 0x44])?;
+                write(32, &[0xAA, 0xBB, 0xCC, 0xDD])?;
+                Ok(())
+            })
+            .unwrap();
+
+        // Verify data was written
+        storage.host_shadow().with_view(|view| {
+            let mut buf = [0u8; 4];
+            view.read_range(0, &mut buf).unwrap();
+            assert_eq!(buf, [0x11, 0x22, 0x33, 0x44]);
+
+            view.read_range(32, &mut buf).unwrap();
+            assert_eq!(buf, [0xAA, 0xBB, 0xCC, 0xDD]);
+        });
+
+        // Verify no dirty flags
+        storage.kernel_shadow().with_view(|view| {
+            assert!(!view.any_dirty());
+        });
+    }
+
+    #[test]
+    fn load_defaults_multiple_ranges() {
+        let storage = test_storage();
+
+        storage
+            .load_defaults(|write| {
+                for i in 0..4 {
+                    let addr = i * 16;
+                    write(addr, &[i as u8; 4])?;
+                }
+                Ok(())
+            })
+            .unwrap();
+
+        // Verify all ranges written correctly
+        storage.host_shadow().with_view(|view| {
+            for i in 0..4 {
+                let addr = i * 16;
+                let mut buf = [0u8; 4];
+                view.read_range(addr, &mut buf).unwrap();
+                assert_eq!(buf, [i as u8; 4]);
+            }
+        });
+    }
+
+    #[test]
+    fn load_defaults_error_propagates() {
+        let storage = test_storage();
+
+        let result = storage.load_defaults(|write| {
+            write(0, &[0x11; 4])?;
+            // Force an error with out-of-bounds write
+            write(100, &[0xAA; 4])
+        });
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn normal_writes_work_after_load_defaults() {
+        let storage = test_storage();
+
+        // Load defaults
+        storage
+            .load_defaults(|write| {
+                write(0, &[0x11, 0x22, 0x33, 0x44])?;
+                Ok(())
+            })
+            .unwrap();
+
+        // Now do a normal write
+        storage.host_shadow().with_view(|view| {
+            view.write_range(0, &[0xAA, 0xBB, 0xCC, 0xDD]).unwrap();
+        });
+
+        // Should be dirty now
+        storage.kernel_shadow().with_view(|view| {
+            assert!(view.any_dirty());
+            assert!(view.is_dirty(0, 4).unwrap());
+        });
+    }
+}

@@ -75,6 +75,9 @@ pub use storage::{ShadowStorage, WriteFn};
 pub use types::StagingBuffer;
 pub use view::{HostView, HostViewStaged, KernelView};
 
+#[cfg(test)]
+mod test_support;
+
 pub mod prelude {
     pub use crate::{
         builder::ShadowStorageBuilder,
