@@ -45,7 +45,7 @@ This design enables efficient one-way synchronization from application to hardwa
 ```rust
 use embedded_shadow::prelude::*;
 
-// Create a 1KB shadow register table
+// Create storage: 1KB total, 64-byte blocks, 16 blocks
 let storage = ShadowStorageBuilder::new()
     .total_size::<1024>()
     .block_size::<64>()
@@ -54,24 +54,36 @@ let storage = ShadowStorageBuilder::new()
     .no_persist()
     .build();
 
-// Host writes data (marks dirty)
-let host = storage.host_shadow();
-host.with_view(|view| {
-    view.write_range(0x100, &[0x01, 0x02, 0x03, 0x04])?;
+// Load factory defaults at boot (doesn't mark dirty)
+storage.load_defaults(|write| {
+    write(0x000, &[0x01, 0x02, 0x03, 0x04])?;
+    write(0x100, &[0xAA, 0xBB, 0xCC, 0xDD])?;
     Ok(())
+}).unwrap();
+
+// host_shadow() and kernel_shadow() return short-lived references,
+// typically constructed each iteration and passed via context, e.g.:
+//   fn update(ctx: &mut HostContext) { ctx.shadow.with_view(|view| { ... }); }
+//   fn run_once(ctx: &mut KernelContext) { ctx.shadow.with_view_unchecked(|view| { ... }); }
+
+// Host side (main loop): use with_view for critical section safety
+storage.host_shadow().with_view(|view| {
+    view.write_range(0x100, &[0xDE, 0xAD, 0xBE, 0xEF]).unwrap();
+
+    let mut buf = [0u8; 4];
+    view.read_range(0x100, &mut buf).unwrap();
 });
 
-// Kernel syncs dirty blocks to hardware
-let kernel = storage.kernel_shadow();
-kernel.with_view(|view| {
-    view.for_each_dirty_block(|addr, data| {
-        // Write to hardware registers
-        hardware_write(addr, data);
-        Ok(())
-    })?;
-    view.clear_dirty();
-    Ok(())
-});
+// Kernel side (ISR): use with_view_unchecked since ISR already has exclusive access
+unsafe {
+    storage.kernel_shadow().with_view_unchecked(|view| {
+        view.for_each_dirty_block(|addr, data| {
+            // Write to hardware registers here
+            Ok(())
+        }).unwrap();
+        view.clear_dirty();
+    });
+}
 ```
 
 ## Examples
