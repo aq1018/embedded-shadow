@@ -33,26 +33,20 @@ pub fn range_span<const TS: usize>(addr: u16, len: usize) -> Result<(usize, usiz
 #[test]
 fn block_span_edge_cases() {
     // Zero length
-    assert_eq!(
-        block_span::<256, 16, 16>(0, 0),
-        Err(ShadowError::ZeroLength)
-    );
+    assert_eq!(block_span::<16, 4, 4>(0, 0), Err(ShadowError::ZeroLength));
 
     // Out of bounds
-    assert_eq!(
-        block_span::<256, 16, 16>(15, 2),
-        Err(ShadowError::OutOfBounds)
-    );
+    assert_eq!(block_span::<16, 4, 4>(15, 2), Err(ShadowError::OutOfBounds));
 
     // Single byte at block boundary
-    assert_eq!(block_span::<256, 16, 16>(4, 1), Ok((1, 1)));
+    assert_eq!(block_span::<16, 4, 4>(4, 1), Ok((1, 1)));
 
     // Exact block
-    assert_eq!(block_span::<256, 16, 16>(4, 4), Ok((1, 1)));
+    assert_eq!(block_span::<16, 4, 4>(4, 4), Ok((1, 1)));
 
     // Spanning all blocks
-    assert_eq!(block_span::<256, 16, 16>(0, 16), Ok((0, 3)));
+    assert_eq!(block_span::<16, 4, 4>(0, 16), Ok((0, 3)));
 
     // Last byte of table
-    assert_eq!(block_span::<256, 16, 16>(15, 1), Ok((3, 3)));
+    assert_eq!(block_span::<16, 4, 4>(15, 1), Ok((3, 3)));
 }
