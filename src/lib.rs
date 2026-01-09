@@ -1,22 +1,22 @@
 //! A `no_std`, no-alloc shadow register table for embedded systems.
-//! 
+//!
 //! This crate provides efficient shadow register management with dirty tracking,
 //! suitable for memory-mapped I/O, peripheral register caching, and state synchronization
 //! between application and hardware layers.
-//! 
+//!
 //! # Features
-//! 
+//!
 //! - **Zero heap allocation** - All storage statically allocated
 //! - **Block-based dirty tracking** - Efficiently track modifications
 //! - **Dual access patterns** - Host (application) and Kernel (hardware) views
 //! - **Flexible policies** - Customizable access control and persistence
 //! - **Transactional writes** - Optional staging with commit/rollback
-//! 
+//!
 //! # Example
-//! 
+//!
 //! ```rust,no_run
 //! use embedded_shadow::prelude::*;
-//! 
+//!
 //! let storage = ShadowStorageBuilder::new()
 //!     .total_size::<1024>()
 //!     .block_size::<64>()
