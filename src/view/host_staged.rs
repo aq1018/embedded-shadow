@@ -57,20 +57,23 @@ where
             return Ok(());
         }
 
+        let mut should_persist = false;
         self.sb.for_each_staged(|addr, data| {
             self.base.write_range_no_persist(addr, data)?;
-            let _ = self
-                .base
-                .persist_policy
-                .push_persist_keys_for_range(addr, data.len(), |key| {
-                    self.base.persist_trigger.push_key(key)
-                });
+            should_persist |=
+                self.base
+                    .persist_policy
+                    .push_persist_keys_for_range(addr, data.len(), |key| {
+                        self.base.persist_trigger.push_key(key)
+                    });
             Ok(())
         })?;
 
         self.sb.clear_staged()?;
 
-        self.base.persist_trigger.request_persist();
+        if should_persist {
+            self.base.persist_trigger.request_persist();
+        }
 
         Ok(())
     }
