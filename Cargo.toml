@@ -12,10 +12,8 @@ categories = ["embedded", "no-std"]
 
 [dependencies]
 critical-section = {version="*", default-features=false}
-heapless = {version="*", default-features=false, optional=true}
+bitmaps = {version="*", default-features=false}
+heapless = {version="*", default-features=false}
 
 [features]
 default = []
-staged = []
-staged-mirror = ["staged"]
-staged-patch = ["staged", "heapless"]

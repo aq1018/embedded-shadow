@@ -1,27 +1,26 @@
 #![deny(unsafe_code)]
 #![no_std]
 
-#[cfg(all(feature = "staged-mirror", feature = "staged-patch"))]
-compile_error!("Enable only one: staged-mirror OR staged-patch");
-
 pub mod error;
-pub mod ops;
+pub mod helpers;
 pub mod persist;
 pub mod policy;
+pub mod shadow;
 pub mod staged;
 pub mod storage;
 pub mod table;
+pub mod types;
 pub mod view;
 
 pub use error::ShadowError;
 pub use persist::{NoPersist, PersistTrigger};
 pub use policy::{AddressPolicy, AllowAllPolicy};
 pub use storage::ShadowStorage;
-pub use view::{HostView, KernelView};
+pub use view::HostView;
 
 pub mod prelude {
     pub use crate::{
-        AddressPolicy, AllowAllPolicy, HostView, KernelView, NoPersist, PersistTrigger,
-        ShadowError, ShadowStorage,
+        AddressPolicy, AllowAllPolicy, HostView, NoPersist, PersistTrigger, ShadowError,
+        ShadowStorage,
     };
 }

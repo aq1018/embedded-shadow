@@ -1,29 +1,43 @@
 use crate::{AddressPolicy, PersistTrigger, ShadowError, table::ShadowTable};
+use bitmaps::{Bits, BitsImpl};
 
-pub struct HostView<'a, const T: usize, const B: usize, const W: usize, P, S>
+pub struct HostView<'a, const TS: usize, const BS: usize, const BC: usize, AP, PT>
 where
-    P: AddressPolicy,
-    S: PersistTrigger,
+    BitsImpl<BC>: Bits,
+    AP: AddressPolicy,
+    PT: PersistTrigger,
 {
-    pub(crate) table: &'a mut ShadowTable<T, B, W>,
-    pub(crate) policy: &'a P,
-    pub(crate) persist: &'a S,
+    pub(crate) table: &'a mut ShadowTable<TS, BS, BC>,
+    pub(crate) policy: &'a AP,
+    pub(crate) persist: &'a PT,
 }
 
-impl<'a, const T: usize, const B: usize, const W: usize, P, S> HostView<'a, T, B, W, P, S>
+impl<'a, const TS: usize, const BS: usize, const BC: usize, AP, PT> HostView<'a, TS, BS, BC, AP, PT>
 where
-    P: AddressPolicy,
-    S: PersistTrigger,
+    BitsImpl<BC>: Bits,
+    AP: AddressPolicy,
+    PT: PersistTrigger,
 {
-    pub(crate) fn new(table: &'a mut ShadowTable<T, B, W>, policy: &'a P, persist: &'a S) -> Self {
+    pub(crate) fn new(
+        table: &'a mut ShadowTable<TS, BS, BC>,
+        policy: &'a AP,
+        persist: &'a PT,
+    ) -> Self {
         Self {
             table,
             policy,
             persist,
         }
     }
+}
 
-    pub fn read_range(&mut self, addr: u16, out: &mut [u8]) -> Result<(), ShadowError> {
+impl<'a, const TS: usize, const BS: usize, const BC: usize, AP, PT> HostView<'a, TS, BS, BC, AP, PT>
+where
+    BitsImpl<BC>: Bits,
+    AP: AddressPolicy,
+    PT: PersistTrigger,
+{
+    pub fn read_range(&self, addr: u16, out: &mut [u8]) -> Result<(), ShadowError> {
         if !self.policy.can_read(addr, out.len()) {
             return Err(ShadowError::Denied);
         }
@@ -44,14 +58,5 @@ where
         }
 
         Ok(())
-    }
-
-    /// Expose dirty queries only if you really need them on host side.
-    pub fn is_dirty(&self, addr: u16, len: usize) -> Result<bool, ShadowError> {
-        self.table.is_dirty(addr, len)
-    }
-
-    pub fn any_dirty(&self) -> bool {
-        self.table.any_dirty()
     }
 }
