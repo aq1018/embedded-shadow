@@ -71,7 +71,7 @@ pub use persist::{NoPersist, PersistTrigger};
 pub use policy::{AccessPolicy, AllowAllPolicy, NoPersistPolicy, PersistPolicy};
 pub use shadow::{HostShadow, KernelShadow};
 pub use staged::PatchStagingBuffer;
-pub use storage::ShadowStorage;
+pub use storage::{ShadowStorage, WriteFn};
 pub use types::StagingBuffer;
 pub use view::{HostView, HostViewStaged, KernelView};
 
