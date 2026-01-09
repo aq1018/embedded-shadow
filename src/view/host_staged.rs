@@ -52,7 +52,12 @@ where
         self.sb.write_staged(addr, data)
     }
 
-    pub fn action(&mut self) -> Result<(), crate::ShadowError> {
+    /// Commits all staged writes to the shadow table.
+    ///
+    /// Staged writes are applied in order, marking blocks dirty and
+    /// triggering persistence as configured. The staging buffer is
+    /// cleared after successful commit.
+    pub fn commit(&mut self) -> Result<(), crate::ShadowError> {
         if !self.sb.any_staged() {
             return Ok(());
         }
@@ -76,5 +81,11 @@ where
         }
 
         Ok(())
+    }
+
+    /// Commits all staged writes to the shadow table.
+    #[deprecated(since = "0.1.2", note = "renamed to `commit()`")]
+    pub fn action(&mut self) -> Result<(), crate::ShadowError> {
+        self.commit()
     }
 }

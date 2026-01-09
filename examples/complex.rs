@@ -220,7 +220,7 @@ pub fn main() {
         if p <= 10 {
             // Validation passed
             // Commit the staged changes
-            view.action().unwrap();
+            view.commit().unwrap();
         }
         // Otherwise staged changes are discarded
     });

@@ -52,7 +52,7 @@ pub fn main() {
         assert_eq!(buffer, [0xAA; 8]); // All original
 
         // Commit staged changes
-        view.action().unwrap();
+        view.commit().unwrap();
 
         // Now regular read sees the changes
         view.read_range(0x00, &mut buffer).unwrap();
@@ -100,7 +100,7 @@ pub fn main() {
         assert_eq!(&buffer[4..8], &[0xFF; 4]); // Original data
 
         // Commit all staged changes
-        view.action().unwrap();
+        view.commit().unwrap();
     });
 
     // ========== Example 4: Staging Buffer Limits ==========
