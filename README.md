@@ -2,7 +2,7 @@
 
 [![Crates.io](https://img.shields.io/crates/v/embedded-shadow)](https://crates.io/crates/embedded-shadow)
 [![docs.rs](https://docs.rs/embedded-shadow/badge.svg)](https://docs.rs/embedded-shadow)
-[![CI](https://github.com/aq1018/embedded-shadow/actions/workflows/ci.yml/badge.svg)](https://github.com/aq1018/embedded-shadow/actions/workflows/ci.yml)
+[![CI](https://github.com/aq1018/embedded-shadow/actions/workflows/test.yml/badge.svg)](https://github.com/aq1018/embedded-shadow/actions/workflows/test.yml)
 [![License](https://img.shields.io/crates/l/embedded-shadow)](LICENSE-MIT)
 [![Minimum rustc version](https://img.shields.io/badge/rustc-1.85+-lightgray.svg)](https://github.com/rust-lang/rust)
 
@@ -12,7 +12,7 @@ A `no_std`, no-alloc shadow register table for embedded systems with dirty track
 
 - **Zero allocation** - All storage is statically allocated via const generics
 - **Dirty tracking** - Efficiently track which blocks have been modified
-- **Dual views** - Separate Host (application) and Kernel (hardware) access patterns  
+- **Dual views** - Separate Host (application) and Kernel (hardware) access patterns
 - **Access policies** - Control read/write permissions for different memory regions
 - **Persistence policies** - Define what and when data should be persisted
 - **Staging support** - Preview and commit/rollback transactional writes
