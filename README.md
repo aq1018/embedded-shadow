@@ -16,6 +16,16 @@ A `no_std`, no-alloc shadow register table for embedded systems with dirty track
 - **Staging support** - Preview and commit/rollback transactional writes
 - **Critical-section support** - Thread-safe access when needed
 
+## Use Cases
+
+- **Cache hardware registers in RAM** - Avoid expensive read-modify-write cycles to slow peripherals (SPI/I2C devices, external memory-mapped chips)
+- **Track what changed** - Dirty tracking lets you sync only modified data to hardware, reducing bus traffic
+- **Decouple app from hardware timing** - Application writes to shadow anytime; hardware driver syncs during appropriate windows (ISR, DMA idle)
+- **Preview before commit** - Staging support lets you build up changes and preview the result before committing (useful for configuration UIs, parameter tuning)
+- **Persist selectively** - Policy-based persistence triggers let you save only specific regions to flash/EEPROM
+
+**Typical applications:** motor controller parameter tables, sensor configuration registers, display controller buffers, audio codec settings, or any peripheral with a register map you want to cache and batch-update.
+
 ## Architecture
 
 The shadow registry uses a **one-way dirty tracking model**:
@@ -68,7 +78,13 @@ storage.load_defaults(|write| {
 
 // Host side (main loop): use with_view for critical section safety
 storage.host_shadow().with_view(|view| {
-    view.write_range(0x100, &[0xDE, 0xAD, 0xBE, 0xEF]).unwrap();
+    // Handle errors explicitly with match
+    match view.write_range(0x100, &[0xDE, 0xAD, 0xBE, 0xEF]) {
+        Ok(()) => {}
+        Err(ShadowError::Denied) => { /* handle access denied */ }
+        Err(ShadowError::OutOfBounds) => { /* handle invalid range */ }
+        Err(e) => panic!("unexpected error: {:?}", e),
+    }
 
     let mut buf = [0u8; 4];
     view.read_range(0x100, &mut buf).unwrap();
@@ -85,6 +101,21 @@ unsafe {
     });
 }
 ```
+
+## Choosing Block Size
+
+Block size controls dirty tracking granularity. Some considerations:
+
+- **Smaller blocks** (e.g., 8-16 bytes): Finer tracking, more dirty bits, better for scattered small writes
+- **Larger blocks** (e.g., 64-256 bytes): Coarser tracking, fewer dirty bits, better for sequential or bulk writes
+
+Common patterns:
+- Match your hardware's natural transfer size (SPI page, I2C buffer)
+- Match your persist sector size if using flash persistence
+- Align features to blocks so each block represents one logical feature—when iterating dirty blocks, you can match on block address to update only the affected feature
+- Power of 2 sizes work well with typical memory layouts
+
+There's no universal "best" size—choose based on your access patterns and memory constraints.
 
 ## Examples
 

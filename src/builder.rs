@@ -9,12 +9,19 @@ use crate::{
 };
 
 // Builder states
+#[doc(hidden)]
 pub struct NeedTotalSize;
+#[doc(hidden)]
 pub struct NeedBlockSize;
+#[doc(hidden)]
 pub struct NeedBlockCount;
+#[doc(hidden)]
 pub struct NeedAccessPolicy;
+#[doc(hidden)]
 pub struct NeedPersistPolicy;
+#[doc(hidden)]
 pub struct NeedPersistTrigger;
+#[doc(hidden)]
 pub struct Ready;
 
 #[derive(Default)]

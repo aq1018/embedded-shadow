@@ -64,7 +64,13 @@
 //!
 //! // Host side (main loop): use with_view for critical section safety
 //! storage.host_shadow().with_view(|view| {
-//!     view.write_range(0x100, &[0xDE, 0xAD, 0xBE, 0xEF]).unwrap();
+//!     // Handle errors explicitly with match
+//!     match view.write_range(0x100, &[0xDE, 0xAD, 0xBE, 0xEF]) {
+//!         Ok(()) => {}
+//!         Err(ShadowError::Denied) => { /* handle access denied */ }
+//!         Err(ShadowError::OutOfBounds) => { /* handle invalid range */ }
+//!         Err(e) => panic!("unexpected error: {:?}", e),
+//!     }
 //!
 //!     let mut buf = [0u8; 4];
 //!     view.read_range(0x100, &mut buf).unwrap();
