@@ -36,6 +36,12 @@ impl<const DC: usize, const EC: usize> PatchStagingBuffer<DC, EC> {
     }
 }
 
+impl<const DC: usize, const EC: usize> Default for PatchStagingBuffer<DC, EC> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<const DC: usize, const EC: usize> StagingBuffer for PatchStagingBuffer<DC, EC> {
     fn any_staged(&self) -> bool {
         !self.entries.is_empty()
@@ -89,8 +95,8 @@ impl<const DC: usize, const EC: usize> StagingBuffer for PatchStagingBuffer<DC, 
             let overlap_start = start.max(out_start);
             let overlap_end = end.min(out_end);
 
-            let data_i = (overlap_start - start) as usize + e.off as usize;
-            let out_i = (overlap_start - out_start) as usize;
+            let data_i = overlap_start - start + e.off as usize;
+            let out_i = overlap_start - out_start;
             let n = overlap_end - overlap_start;
 
             // Write staged data into the output buffer
