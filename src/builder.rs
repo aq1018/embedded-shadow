@@ -17,6 +17,7 @@ pub struct NeedPersistPolicy;
 pub struct NeedPersistTrigger;
 pub struct Ready;
 
+#[derive(Default)]
 pub struct ShadowStorageBuilder<
     const TS: usize,
     const BS: usize,
@@ -47,9 +48,9 @@ impl ShadowStorageBuilder<0, 0, 0, (), (), (), (), NeedTotalSize> {
 
 // Set total size
 impl ShadowStorageBuilder<0, 0, 0, (), (), (), (), NeedTotalSize> {
-    pub fn total_size<const TS: usize>(self) 
-        -> ShadowStorageBuilder<TS, 0, 0, (), (), (), (), NeedBlockSize> 
-    {
+    pub fn total_size<const TS: usize>(
+        self,
+    ) -> ShadowStorageBuilder<TS, 0, 0, (), (), (), (), NeedBlockSize> {
         ShadowStorageBuilder {
             access_policy: None,
             persist_policy: None,
@@ -61,9 +62,9 @@ impl ShadowStorageBuilder<0, 0, 0, (), (), (), (), NeedTotalSize> {
 
 // Set block size
 impl<const TS: usize> ShadowStorageBuilder<TS, 0, 0, (), (), (), (), NeedBlockSize> {
-    pub fn block_size<const BS: usize>(self) 
-        -> ShadowStorageBuilder<TS, BS, 0, (), (), (), (), NeedBlockCount> 
-    {
+    pub fn block_size<const BS: usize>(
+        self,
+    ) -> ShadowStorageBuilder<TS, BS, 0, (), (), (), (), NeedBlockCount> {
         ShadowStorageBuilder {
             access_policy: None,
             persist_policy: None,
@@ -74,17 +75,28 @@ impl<const TS: usize> ShadowStorageBuilder<TS, 0, 0, (), (), (), (), NeedBlockSi
 }
 
 // Set block count
-impl<const TS: usize, const BS: usize> 
-    ShadowStorageBuilder<TS, BS, 0, (), (), (), (), NeedBlockCount> 
+impl<const TS: usize, const BS: usize>
+    ShadowStorageBuilder<TS, BS, 0, (), (), (), (), NeedBlockCount>
 {
     /// Set the number of blocks.
-    /// 
+    ///
     /// # Panics
     /// Panics at runtime if TS != BS * BC.
     /// For a 1024-byte storage with 64-byte blocks, use BC = 16.
-    pub fn block_count<const BC: usize>(self) 
-        -> ShadowStorageBuilder<TS, BS, BC, (), (), (), (), NeedAccessPolicy>
-    {
+    pub fn block_count<const BC: usize>(
+        self,
+    ) -> ShadowStorageBuilder<TS, BS, BC, (), (), (), (), NeedAccessPolicy> {
+        // Early validation - fail fast with clear error message
+        assert_eq!(
+            TS,
+            BS * BC,
+            "Total size {} does not match block_size {} * block_count {} = {}",
+            TS,
+            BS,
+            BC,
+            BS * BC
+        );
+
         ShadowStorageBuilder {
             access_policy: None,
             persist_policy: None,
@@ -95,12 +107,13 @@ impl<const TS: usize, const BS: usize>
 }
 
 // Set access policy
-impl<const TS: usize, const BS: usize, const BC: usize> 
-    ShadowStorageBuilder<TS, BS, BC, (), (), (), (), NeedAccessPolicy> 
+impl<const TS: usize, const BS: usize, const BC: usize>
+    ShadowStorageBuilder<TS, BS, BC, (), (), (), (), NeedAccessPolicy>
 {
-    pub fn access_policy<AP: AccessPolicy>(self, policy: AP) 
-        -> ShadowStorageBuilder<TS, BS, BC, AP, (), (), (), NeedPersistPolicy> 
-    {
+    pub fn access_policy<AP: AccessPolicy>(
+        self,
+        policy: AP,
+    ) -> ShadowStorageBuilder<TS, BS, BC, AP, (), (), (), NeedPersistPolicy> {
         ShadowStorageBuilder {
             access_policy: Some(policy),
             persist_policy: None,
@@ -108,24 +121,26 @@ impl<const TS: usize, const BS: usize, const BC: usize>
             _phantom: PhantomData,
         }
     }
-    
+
     /// Use the default allow-all access policy
-    pub fn default_access(self) 
-        -> ShadowStorageBuilder<TS, BS, BC, AllowAllPolicy, (), (), (), NeedPersistPolicy> 
-    {
+    pub fn default_access(
+        self,
+    ) -> ShadowStorageBuilder<TS, BS, BC, AllowAllPolicy, (), (), (), NeedPersistPolicy> {
         self.access_policy(AllowAllPolicy::default())
     }
 }
 
 // Set persist policy
-impl<const TS: usize, const BS: usize, const BC: usize, AP> 
+impl<const TS: usize, const BS: usize, const BC: usize, AP>
     ShadowStorageBuilder<TS, BS, BC, AP, (), (), (), NeedPersistPolicy>
 where
     AP: AccessPolicy,
 {
     /// Set a custom persist policy with a specific key type
-    pub fn persist_policy<PP, PK>(self, policy: PP) 
-        -> ShadowStorageBuilder<TS, BS, BC, AP, PP, (), PK, NeedPersistTrigger>
+    pub fn persist_policy<PP, PK>(
+        self,
+        policy: PP,
+    ) -> ShadowStorageBuilder<TS, BS, BC, AP, PP, (), PK, NeedPersistTrigger>
     where
         PP: PersistPolicy<PK>,
     {
@@ -136,11 +151,11 @@ where
             _phantom: PhantomData,
         }
     }
-    
+
     /// Use no persistence (no persist policy or trigger)
-    pub fn no_persist(self) 
-        -> ShadowStorageBuilder<TS, BS, BC, AP, NoPersistPolicy, NoPersist, (), Ready> 
-    {
+    pub fn no_persist(
+        self,
+    ) -> ShadowStorageBuilder<TS, BS, BC, AP, NoPersistPolicy, NoPersist, (), Ready> {
         ShadowStorageBuilder {
             access_policy: self.access_policy,
             persist_policy: Some(NoPersistPolicy::default()),
@@ -151,15 +166,17 @@ where
 }
 
 // Set persist trigger
-impl<const TS: usize, const BS: usize, const BC: usize, AP, PP, PK> 
+impl<const TS: usize, const BS: usize, const BC: usize, AP, PP, PK>
     ShadowStorageBuilder<TS, BS, BC, AP, PP, (), PK, NeedPersistTrigger>
 where
     AP: AccessPolicy,
     PP: PersistPolicy<PK>,
 {
     /// Set the persist trigger that handles the persistence keys
-    pub fn persist_trigger<PT>(self, trigger: PT) 
-        -> ShadowStorageBuilder<TS, BS, BC, AP, PP, PT, PK, Ready>
+    pub fn persist_trigger<PT>(
+        self,
+        trigger: PT,
+    ) -> ShadowStorageBuilder<TS, BS, BC, AP, PP, PT, PK, Ready>
     where
         PT: PersistTrigger<PK>,
     {
@@ -173,7 +190,7 @@ where
 }
 
 // Build the final storage
-impl<const TS: usize, const BS: usize, const BC: usize, AP, PP, PT, PK> 
+impl<const TS: usize, const BS: usize, const BC: usize, AP, PP, PT, PK>
     ShadowStorageBuilder<TS, BS, BC, AP, PP, PT, PK, Ready>
 where
     AP: AccessPolicy,
@@ -182,7 +199,7 @@ where
     BitsImpl<BC>: Bits,
 {
     /// Build the final ShadowStorage instance
-    /// 
+    ///
     /// # Panics
     /// Panics if TS != BS * BC (validated in ShadowTable::new)
     pub fn build(self) -> ShadowStorage<TS, BS, BC, AP, PP, PT, PK> {
@@ -203,7 +220,7 @@ mod tests {
         let _storage = ShadowStorageBuilder::new()
             .total_size::<1024>()
             .block_size::<64>()
-            .block_count::<16>()  // 64 * 16 = 1024
+            .block_count::<16>() // 64 * 16 = 1024
             .default_access()
             .no_persist()
             .build();
@@ -213,14 +230,20 @@ mod tests {
     fn test_builder_with_custom_policies() {
         struct TestAccessPolicy;
         impl AccessPolicy for TestAccessPolicy {
-            fn can_read(&self, _addr: u16, _len: usize) -> bool { true }
-            fn can_write(&self, _addr: u16, _len: usize) -> bool { true }
+            fn can_read(&self, _addr: u16, _len: usize) -> bool {
+                true
+            }
+            fn can_write(&self, _addr: u16, _len: usize) -> bool {
+                true
+            }
         }
 
         struct TestPersistPolicy;
         impl PersistPolicy<u32> for TestPersistPolicy {
-            fn push_persist_keys_for_range<F>(&self, _addr: u16, _len: usize, _push_key: F) -> bool 
-            where F: FnMut(u32) {
+            fn push_persist_keys_for_range<F>(&self, _addr: u16, _len: usize, _push_key: F) -> bool
+            where
+                F: FnMut(u32),
+            {
                 false
             }
         }
@@ -234,7 +257,7 @@ mod tests {
         let _storage = ShadowStorageBuilder::new()
             .total_size::<2048>()
             .block_size::<128>()
-            .block_count::<16>()  // 128 * 16 = 2048
+            .block_count::<16>() // 128 * 16 = 2048
             .access_policy(TestAccessPolicy)
             .persist_policy(TestPersistPolicy)
             .persist_trigger(TestPersistTrigger)
@@ -242,12 +265,12 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Total size must match block size x block count")]
+    #[should_panic(expected = "Total size 1024 does not match block_size 64 * block_count 15")]
     fn test_builder_panics_on_mismatch() {
         let _storage = ShadowStorageBuilder::new()
             .total_size::<1024>()
             .block_size::<64>()
-            .block_count::<15>()  // 64 * 15 = 960, not 1024!
+            .block_count::<15>() // 64 * 15 = 960, not 1024!
             .default_access()
             .no_persist()
             .build();

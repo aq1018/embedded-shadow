@@ -16,7 +16,7 @@ where
     BitsImpl<BC>: Bits,
 {
     pub(crate) fn new() -> Self {
-        assert!(
+        debug_assert!(
             TS == BS * BC,
             "Total size must match block size x block count",
         );

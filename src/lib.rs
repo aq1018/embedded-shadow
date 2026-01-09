@@ -13,15 +13,24 @@ pub mod table;
 pub mod types;
 pub mod view;
 
+pub use builder::ShadowStorageBuilder;
 pub use error::ShadowError;
 pub use persist::{NoPersist, PersistTrigger};
-pub use policy::{AccessPolicy, AllowAllPolicy};
+pub use policy::{AccessPolicy, AllowAllPolicy, NoPersistPolicy, PersistPolicy};
+pub use staged::PatchStagingBuffer;
 pub use storage::ShadowStorage;
+pub use types::StagingBuffer;
 pub use view::HostView;
 
 pub mod prelude {
     pub use crate::{
-        AccessPolicy, AllowAllPolicy, HostView, NoPersist, PersistTrigger, ShadowError,
-        ShadowStorage,
+        builder::ShadowStorageBuilder,
+        error::ShadowError,
+        persist::{NoPersist, PersistTrigger},
+        policy::{AccessPolicy, AllowAllPolicy, NoPersistPolicy, PersistPolicy},
+        staged::PatchStagingBuffer,
+        storage::ShadowStorage,
+        types::StagingBuffer,
+        view::HostView,
     };
 }
