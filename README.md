@@ -16,6 +16,30 @@ A `no_std`, no-alloc shadow register table for embedded systems with dirty track
 - **Staging support** - Preview and commit/rollback transactional writes
 - **Critical-section support** - Thread-safe access when needed
 
+## Architecture
+
+The shadow registry uses a **one-way dirty tracking model**:
+
+```text
+┌──────────────────┐         ┌──────────────────────────┐
+│   Host (App)     │         │   Kernel (HW)            │
+│                  │         │                          │
+│  write_range()   │────────▶│  for_each_dirty_block()  │
+│  (marks dirty)   │  dirty  │  (reads dirty)           │
+│                  │  bits   │                          │
+│                  │◀────────│  clear_dirty()           │
+│                  │  reset  │  write_range()           │
+│                  │         │  (no dirty mark)         │
+└──────────────────┘         └──────────────────────────┘
+```
+
+- **Host writes** mark blocks as dirty and may trigger persistence
+- **Kernel reads** dirty state to sync changes to hardware
+- **Kernel writes** update the shadow (e.g., after reading from hardware) without marking dirty
+- **Kernel clears** dirty bits after syncing
+
+This design enables efficient one-way synchronization from application to hardware.
+
 ## Quick Start
 
 ```rust
