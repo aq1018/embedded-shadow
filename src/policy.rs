@@ -17,7 +17,7 @@ impl AccessPolicy for AllowAllPolicy {
 }
 
 pub trait PersistPolicy<PK> {
-    fn push_persistkeys_for_range<F>(&self, addr: u16, len: usize, push_key: F) -> bool
+    fn push_persist_keys_for_range<F>(&self, addr: u16, len: usize, push_key: F) -> bool
     where
         F: FnMut(PK);
 }
@@ -26,7 +26,7 @@ pub trait PersistPolicy<PK> {
 pub struct NoPersistPolicy {}
 
 impl PersistPolicy<()> for NoPersistPolicy {
-    fn push_persistkeys_for_range<F>(&self, _addr: u16, _len: usize, _push_key: F) -> bool {
+    fn push_persist_keys_for_range<F>(&self, _addr: u16, _len: usize, _push_key: F) -> bool {
         false
     }
 }

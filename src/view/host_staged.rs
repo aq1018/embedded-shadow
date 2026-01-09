@@ -62,7 +62,7 @@ where
             let _ = self
                 .base
                 .persist_policy
-                .push_persistkeys_for_range(addr, data.len(), |key| {
+                .push_persist_keys_for_range(addr, data.len(), |key| {
                     self.base.persist_trigger.push_key(key)
                 });
             Ok(())

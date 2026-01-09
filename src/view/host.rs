@@ -53,7 +53,7 @@ where
 
         let should_persist =
             self.persist_policy
-                .push_persistkeys_for_range(addr, data.len(), |key| {
+                .push_persist_keys_for_range(addr, data.len(), |key| {
                     self.persist_trigger.push_key(key)
                 });
 
