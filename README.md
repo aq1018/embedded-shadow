@@ -1,5 +1,11 @@
 # embedded-shadow
 
+[![Crates.io](https://img.shields.io/crates/v/embedded-shadow)](https://crates.io/crates/embedded-shadow)
+[![docs.rs](https://docs.rs/embedded-shadow/badge.svg)](https://docs.rs/embedded-shadow)
+[![CI](https://github.com/aq1018/embedded-shadow/actions/workflows/ci.yml/badge.svg)](https://github.com/aq1018/embedded-shadow/actions/workflows/ci.yml)
+[![License](https://img.shields.io/crates/l/embedded-shadow)](LICENSE-MIT)
+[![Minimum rustc version](https://img.shields.io/badge/rustc-1.85+-lightgray.svg)](https://github.com/rust-lang/rust)
+
 A `no_std`, no-alloc shadow register table for embedded systems with dirty tracking and transactional writes.
 
 ## Features
