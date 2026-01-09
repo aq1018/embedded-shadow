@@ -28,10 +28,18 @@ where
     }
 
     pub fn with_view<R>(&self, f: impl FnOnce(&mut KernelView<TS, BS, BC>) -> R) -> R {
-        critical_section::with(|_| self.with_view_unchecked(f))
+        critical_section::with(|_| unsafe { self.with_view_unchecked(f) })
     }
 
-    pub fn with_view_unchecked<R>(&self, f: impl FnOnce(&mut KernelView<TS, BS, BC>) -> R) -> R {
+    /// # Safety
+    /// This function is unsafe because it requires exclusive access to the ShadowStorage.
+    /// You must ensure that no other code is accessing the ShadowStorage at the same time.
+    /// Generally, if your kernel is running inside an ISR and cannot be interrupted by other ISRs,
+    /// then it is safe to call this function.
+    pub unsafe fn with_view_unchecked<R>(
+        &self,
+        f: impl FnOnce(&mut KernelView<TS, BS, BC>) -> R,
+    ) -> R {
         let table = unsafe { &mut *self.storage.table.get() };
         let mut view = KernelView::new(table);
         f(&mut view)
