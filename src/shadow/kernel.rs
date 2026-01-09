@@ -1,24 +1,29 @@
 #![allow(unsafe_code)]
 
-use crate::{AddressPolicy, PersistTrigger, storage::ShadowStorageBase, view::KernelView};
+use crate::{
+    AccessPolicy, PersistTrigger, policy::PersistPolicy, storage::ShadowStorageBase,
+    view::KernelView,
+};
 
-pub struct KernelShadow<'a, const TS: usize, const BS: usize, const BC: usize, AP, PT, SS>
+pub struct KernelShadow<'a, const TS: usize, const BS: usize, const BC: usize, AP, PP, PT, PK, SS>
 where
-    AP: AddressPolicy,
-    PT: PersistTrigger,
+    AP: AccessPolicy,
+    PP: PersistPolicy<PK>,
+    PT: PersistTrigger<PK>,
     bitmaps::BitsImpl<BC>: bitmaps::Bits,
 {
-    storage: &'a ShadowStorageBase<TS, BS, BC, AP, PT, SS>,
+    storage: &'a ShadowStorageBase<TS, BS, BC, AP, PP, PT, PK, SS>,
 }
 
-impl<'a, const TS: usize, const BS: usize, const BC: usize, AP, PT, SS>
-    KernelShadow<'a, TS, BS, BC, AP, PT, SS>
+impl<'a, const TS: usize, const BS: usize, const BC: usize, AP, PP, PT, PK, SS>
+    KernelShadow<'a, TS, BS, BC, AP, PP, PT, PK, SS>
 where
-    AP: AddressPolicy,
-    PT: PersistTrigger,
+    AP: AccessPolicy,
+    PP: PersistPolicy<PK>,
+    PT: PersistTrigger<PK>,
     bitmaps::BitsImpl<BC>: bitmaps::Bits,
 {
-    pub(crate) fn new(storage: &'a ShadowStorageBase<TS, BS, BC, AP, PT, SS>) -> Self {
+    pub(crate) fn new(storage: &'a ShadowStorageBase<TS, BS, BC, AP, PP, PT, PK, SS>) -> Self {
         Self { storage }
     }
 

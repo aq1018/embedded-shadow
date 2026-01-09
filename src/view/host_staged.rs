@@ -1,38 +1,31 @@
-use crate::{AddressPolicy, HostView, PersistTrigger, types::StagingBuffer};
+use crate::{AccessPolicy, HostView, PersistTrigger, policy::PersistPolicy, types::StagingBuffer};
 use bitmaps::{Bits, BitsImpl};
 
-pub struct HostViewStaged<'a, const TS: usize, const BS: usize, const BC: usize, AP, PT, SB>
+pub struct HostViewStaged<'a, const TS: usize, const BS: usize, const BC: usize, AP, PP, PT, PK, SB>
 where
-    AP: AddressPolicy,
-    PT: PersistTrigger,
+    AP: AccessPolicy,
+    PP: PersistPolicy<PK>,
+    PT: PersistTrigger<PK>,
     BitsImpl<BC>: Bits,
     SB: StagingBuffer,
 {
-    base: HostView<'a, TS, BS, BC, AP, PT>,
+    base: HostView<'a, TS, BS, BC, AP, PP, PT, PK>,
     sb: &'a mut SB,
 }
 
-impl<'a, const TS: usize, const BS: usize, const BC: usize, AP, PT, SB>
-    HostViewStaged<'a, TS, BS, BC, AP, PT, SB>
+impl<'a, const TS: usize, const BS: usize, const BC: usize, AP, PP, PT, PK, SB>
+    HostViewStaged<'a, TS, BS, BC, AP, PP, PT, PK, SB>
 where
-    AP: AddressPolicy,
-    PT: PersistTrigger,
+    AP: AccessPolicy,
+    PP: PersistPolicy<PK>,
+    PT: PersistTrigger<PK>,
     BitsImpl<BC>: Bits,
     SB: StagingBuffer,
 {
-    pub(crate) fn new(base: HostView<'a, TS, BS, BC, AP, PT>, sb: &'a mut SB) -> Self {
+    pub(crate) fn new(base: HostView<'a, TS, BS, BC, AP, PP, PT, PK>, sb: &'a mut SB) -> Self {
         Self { base, sb }
     }
-}
 
-impl<'a, const TS: usize, const BS: usize, const BC: usize, AP, PT, SB>
-    HostViewStaged<'a, TS, BS, BC, AP, PT, SB>
-where
-    AP: AddressPolicy,
-    PT: PersistTrigger,
-    BitsImpl<BC>: Bits,
-    SB: StagingBuffer,
-{
     pub fn read_range(&self, addr: u16, out: &mut [u8]) -> Result<(), crate::ShadowError> {
         self.base.read_range(addr, out)
     }
@@ -40,18 +33,9 @@ where
     pub fn write_range(&mut self, addr: u16, data: &[u8]) -> Result<(), crate::ShadowError> {
         self.base.write_range(addr, data)
     }
-}
 
-impl<'a, const TS: usize, const BS: usize, const BC: usize, AP, PT, SB>
-    HostViewStaged<'a, TS, BS, BC, AP, PT, SB>
-where
-    AP: AddressPolicy,
-    PT: PersistTrigger,
-    BitsImpl<BC>: Bits,
-    SB: StagingBuffer,
-{
     pub fn read_range_overlay(&self, addr: u16, out: &mut [u8]) -> Result<(), crate::ShadowError> {
-        if !self.base.policy.can_read(addr, out.len()) {
+        if !self.base.access_policy.can_read(addr, out.len()) {
             return Err(crate::ShadowError::Denied);
         }
 
@@ -61,7 +45,7 @@ where
     }
 
     pub fn write_range_staged(&mut self, addr: u16, data: &[u8]) -> Result<(), crate::ShadowError> {
-        if !self.base.policy.can_write(addr, data.len()) {
+        if !self.base.access_policy.can_write(addr, data.len()) {
             return Err(crate::ShadowError::Denied);
         }
 
@@ -73,9 +57,21 @@ where
             return Ok(());
         }
 
-        self.sb
-            .for_each_staged(|addr, data| self.base.write_range(addr, data))?;
+        self.sb.for_each_staged(|addr, data| {
+            self.base.write_range_no_persist(addr, data)?;
+            let _ = self
+                .base
+                .persist_policy
+                .push_persistkeys_for_range(addr, data.len(), |key| {
+                    self.base.persist_trigger.push_key(key)
+                });
+            Ok(())
+        })?;
 
-        self.sb.clear_staged()
+        self.sb.clear_staged()?;
+
+        self.base.persist_trigger.request_persist();
+
+        Ok(())
     }
 }

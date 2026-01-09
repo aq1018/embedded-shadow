@@ -1,10 +1,10 @@
-use core::cell::UnsafeCell;
+use core::{cell::UnsafeCell, marker::PhantomData};
 
 use bitmaps::{Bits, BitsImpl};
 
 use crate::{
     persist::PersistTrigger,
-    policy::AddressPolicy,
+    policy::{AccessPolicy, PersistPolicy},
     shadow::{HostShadow, KernelShadow},
     table::ShadowTable,
     types::StagingBuffer,
@@ -16,34 +16,40 @@ pub struct WithStage<SB: StagingBuffer> {
     pub(crate) sb: SB,
 }
 
-pub struct ShadowStorageBase<const TS: usize, const BS: usize, const BC: usize, AP, PT, SS>
+pub struct ShadowStorageBase<const TS: usize, const BS: usize, const BC: usize, AP, PP, PT, PK, SS>
 where
-    AP: AddressPolicy,
-    PT: PersistTrigger,
+    AP: AccessPolicy,
+    PP: PersistPolicy<PK>,
+    PT: PersistTrigger<PK>,
     BitsImpl<BC>: Bits,
 {
     pub(crate) table: UnsafeCell<ShadowTable<TS, BS, BC>>,
-    pub(crate) policy: AP,
-    pub(crate) persist: PT,
-    pub(crate) stage: UnsafeCell<SS>,
+    pub(crate) access_policy: AP,
+    pub(crate) persist_policy: PP,
+    pub(crate) persist_trigger: UnsafeCell<PT>,
+    pub(crate) stage_state: UnsafeCell<SS>,
+    _phantom: PhantomData<PK>,
 }
 
-pub type ShadowStorage<const TS: usize, const BS: usize, const BC: usize, AP, PT> =
-    ShadowStorageBase<TS, BS, BC, AP, PT, NoStage>;
+pub type ShadowStorage<const TS: usize, const BS: usize, const BC: usize, AP, PP, PT, PK> =
+    ShadowStorageBase<TS, BS, BC, AP, PP, PT, PK, NoStage>;
 
-impl<const TS: usize, const BS: usize, const BC: usize, AP, PT>
-    ShadowStorageBase<TS, BS, BC, AP, PT, NoStage>
+impl<const TS: usize, const BS: usize, const BC: usize, AP, PP, PT, PK>
+    ShadowStorageBase<TS, BS, BC, AP, PP, PT, PK, NoStage>
 where
-    AP: AddressPolicy,
-    PT: PersistTrigger,
+    AP: AccessPolicy,
+    PP: PersistPolicy<PK>,
+    PT: PersistTrigger<PK>,
     BitsImpl<BC>: Bits,
 {
-    pub fn new(policy: AP, persist: PT) -> Self {
+    pub fn new(policy: AP, persist: PP, trigger: PT) -> Self {
         Self {
             table: UnsafeCell::new(ShadowTable::new()),
-            policy,
-            persist,
-            stage: UnsafeCell::new(NoStage),
+            access_policy: policy,
+            persist_policy: persist,
+            persist_trigger: UnsafeCell::new(trigger),
+            stage_state: UnsafeCell::new(NoStage),
+            _phantom: PhantomData,
         }
     }
 
@@ -51,28 +57,31 @@ where
     pub fn with_staging<SB: StagingBuffer>(
         self,
         sb: SB,
-    ) -> ShadowStorageBase<TS, BS, BC, AP, PT, WithStage<SB>> {
+    ) -> ShadowStorageBase<TS, BS, BC, AP, PP, PT, PK, WithStage<SB>> {
         ShadowStorageBase {
             table: self.table,
-            policy: self.policy,
-            persist: self.persist,
-            stage: UnsafeCell::new(WithStage { sb }),
+            access_policy: self.access_policy,
+            persist_policy: self.persist_policy,
+            persist_trigger: self.persist_trigger,
+            stage_state: UnsafeCell::new(WithStage { sb }),
+            _phantom: PhantomData,
         }
     }
 }
 
-impl<const TS: usize, const BS: usize, const BC: usize, AP, PT, SS>
-    ShadowStorageBase<TS, BS, BC, AP, PT, SS>
+impl<const TS: usize, const BS: usize, const BC: usize, AP, PP, PT, PK, SS>
+    ShadowStorageBase<TS, BS, BC, AP, PP, PT, PK, SS>
 where
-    AP: AddressPolicy,
-    PT: PersistTrigger,
+    AP: AccessPolicy,
+    PP: PersistPolicy<PK>,
+    PT: PersistTrigger<PK>,
     BitsImpl<BC>: Bits,
 {
-    pub fn host_shadow(&self) -> HostShadow<'_, TS, BS, BC, AP, PT, SS> {
+    pub fn host_shadow(&self) -> HostShadow<'_, TS, BS, BC, AP, PP, PT, PK, SS> {
         HostShadow::new(self)
     }
 
-    pub fn kernel_shadow(&self) -> KernelShadow<'_, TS, BS, BC, AP, PT, SS> {
+    pub fn kernel_shadow(&self) -> KernelShadow<'_, TS, BS, BC, AP, PP, PT, PK, SS> {
         KernelShadow::new(self)
     }
 }

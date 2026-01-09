@@ -14,13 +14,13 @@ pub mod view;
 
 pub use error::ShadowError;
 pub use persist::{NoPersist, PersistTrigger};
-pub use policy::{AddressPolicy, AllowAllPolicy};
+pub use policy::{AccessPolicy, AllowAllPolicy};
 pub use storage::ShadowStorage;
 pub use view::HostView;
 
 pub mod prelude {
     pub use crate::{
-        AddressPolicy, AllowAllPolicy, HostView, NoPersist, PersistTrigger, ShadowError,
+        AccessPolicy, AllowAllPolicy, HostView, NoPersist, PersistTrigger, ShadowError,
         ShadowStorage,
     };
 }
