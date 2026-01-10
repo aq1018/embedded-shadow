@@ -9,6 +9,7 @@ A `no_std`, no-alloc shadow register table for embedded systems with dirty track
 ## Features
 
 - **Zero allocation** - All storage is statically allocated via const generics
+- **Zero-copy access** - Direct slice access for reads and writes, no intermediate buffers
 - **Dirty tracking** - Efficiently track which blocks have been modified
 - **Dual views** - Separate Host (application) and Kernel (hardware) access patterns
 - **Access policies** - Control read/write permissions for different memory regions

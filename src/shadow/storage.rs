@@ -7,6 +7,7 @@ use crate::shadow::{
     handle::{HostShadow, KernelShadow},
     persist::PersistTrigger,
     policy::{AccessPolicy, PersistPolicy},
+    slice::WOSlice,
     table::ShadowTable,
     types::StagingBuffer,
 };
@@ -86,9 +87,6 @@ where
     }
 }
 
-/// Write function type for [`ShadowStorageBase::load_defaults`].
-pub type WriteFn = dyn FnMut(u16, &[u8]) -> Result<(), ShadowError>;
-
 impl<const TS: usize, const BS: usize, const BC: usize, AP, PP, PT, PK, SS>
     ShadowStorageBase<TS, BS, BC, AP, PP, PT, PK, SS>
 where
@@ -105,40 +103,49 @@ where
         KernelShadow::new(self)
     }
 
-    /// Load initial values into the shadow table without marking dirty.
+    /// Zero-copy write for initialization without marking dirty.
     ///
     /// Use this during system initialization to populate the shadow
     /// with factory defaults or restored EEPROM data.
+    ///
+    /// Unlike `with_wo_slice`, this method:
+    /// - Does NOT mark blocks as dirty
+    /// - Does NOT check access policies
+    /// - Does NOT trigger persistence
     ///
     /// # Safety
     ///
     /// Caller must ensure exclusive access to the storage.
     /// Typically safe during boot before interrupts are enabled.
-    pub unsafe fn load_defaults_unchecked(
+    pub unsafe fn with_defaults_unchecked<F, R>(
         &self,
-        f: impl FnOnce(&mut WriteFn) -> Result<(), ShadowError>,
-    ) -> Result<(), ShadowError> {
+        addr: u16,
+        len: usize,
+        f: F,
+    ) -> Result<R, ShadowError>
+    where
+        F: FnOnce(WOSlice<'_>) -> R,
+    {
         let table = unsafe { &mut *self.table.get() };
-        let mut write = |addr: u16, data: &[u8]| {
-            table.with_bytes_mut(addr, data.len(), |buf| {
-                buf.copy_from_slice(data);
-                Ok(())
-            })
-        };
-        f(&mut write)
+        table.with_bytes_mut(addr, len, |buf| Ok(f(WOSlice::new(buf))))
     }
 
-    /// Load initial values into the shadow table without marking dirty.
+    /// Zero-copy write for initialization without marking dirty.
     ///
-    /// Wraps [`Self::load_defaults_unchecked`] in a critical section.
+    /// Wraps [`Self::with_defaults_unchecked`] in a critical section.
     ///
     /// Use this during system initialization to populate the shadow
     /// with factory defaults or restored EEPROM data.
-    pub fn load_defaults(
-        &self,
-        f: impl FnOnce(&mut WriteFn) -> Result<(), ShadowError>,
-    ) -> Result<(), ShadowError> {
-        critical_section::with(|_| unsafe { self.load_defaults_unchecked(f) })
+    ///
+    /// Unlike `with_wo_slice`, this method:
+    /// - Does NOT mark blocks as dirty
+    /// - Does NOT check access policies
+    /// - Does NOT trigger persistence
+    pub fn with_defaults<F, R>(&self, addr: u16, len: usize, f: F) -> Result<R, ShadowError>
+    where
+        F: FnOnce(WOSlice<'_>) -> R,
+    {
+        critical_section::with(|_| unsafe { self.with_defaults_unchecked(addr, len, f) })
     }
 }
 
@@ -147,14 +154,17 @@ mod tests {
     use crate::shadow::{WriteResult, test_support::test_storage};
 
     #[test]
-    fn load_defaults_writes_data_without_marking_dirty() {
+    fn with_defaults_writes_data_without_marking_dirty() {
         let storage = test_storage();
 
         storage
-            .load_defaults(|write| {
-                write(0, &[0x11, 0x22, 0x33, 0x44])?;
-                write(32, &[0xAA, 0xBB, 0xCC, 0xDD])?;
-                Ok(())
+            .with_defaults(0, 4, |mut slice| {
+                slice.copy_from_slice(&[0x11, 0x22, 0x33, 0x44]);
+            })
+            .unwrap();
+        storage
+            .with_defaults(32, 4, |mut slice| {
+                slice.copy_from_slice(&[0xAA, 0xBB, 0xCC, 0xDD]);
             })
             .unwrap();
 
@@ -182,22 +192,21 @@ mod tests {
     }
 
     #[test]
-    fn load_defaults_multiple_ranges() {
+    fn with_defaults_multiple_ranges() {
         let storage = test_storage();
 
-        storage
-            .load_defaults(|write| {
-                for i in 0..4 {
-                    let addr = i * 16;
-                    write(addr, &[i as u8; 4])?;
-                }
-                Ok(())
-            })
-            .unwrap();
+        for i in 0..4u16 {
+            let addr = i * 16;
+            storage
+                .with_defaults(addr, 4, |mut slice| {
+                    slice.fill(i as u8);
+                })
+                .unwrap();
+        }
 
         // Verify all ranges written correctly
         storage.host_shadow().with_view(|view| {
-            for i in 0..4 {
+            for i in 0..4u16 {
                 let addr = i * 16;
                 view.with_ro_slice(addr, 4, |slice| {
                     let mut buf = [0u8; 4];
@@ -210,27 +219,27 @@ mod tests {
     }
 
     #[test]
-    fn load_defaults_error_propagates() {
+    fn with_defaults_error_propagates() {
         let storage = test_storage();
 
-        let result = storage.load_defaults(|write| {
-            write(0, &[0x11; 4])?;
-            // Force an error with out-of-bounds write
-            write(100, &[0xAA; 4])
-        });
+        // Valid write
+        storage
+            .with_defaults(0, 4, |mut slice| slice.fill(0x11))
+            .unwrap();
 
+        // Out-of-bounds write should error
+        let result = storage.with_defaults(100, 4, |mut slice| slice.fill(0xAA));
         assert!(result.is_err());
     }
 
     #[test]
-    fn normal_writes_work_after_load_defaults() {
+    fn normal_writes_work_after_with_defaults() {
         let storage = test_storage();
 
         // Load defaults
         storage
-            .load_defaults(|write| {
-                write(0, &[0x11, 0x22, 0x33, 0x44])?;
-                Ok(())
+            .with_defaults(0, 4, |mut slice| {
+                slice.copy_from_slice(&[0x11, 0x22, 0x33, 0x44]);
             })
             .unwrap();
 

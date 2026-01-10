@@ -21,7 +21,7 @@ pub use persist::{NoPersist, PersistTrigger};
 pub use policy::{AccessPolicy, AllowAllPolicy, NoPersistPolicy, PersistPolicy};
 pub use slice::{ROSlice, RWSlice, WOSlice};
 pub use staged::PatchStagingBuffer;
-pub use storage::{ShadowStorage, WriteFn};
+pub use storage::ShadowStorage;
 pub use types::{StagingBuffer, WriteResult};
 pub use view::{HostView, HostViewStaged, KernelView};
 
