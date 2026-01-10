@@ -6,9 +6,9 @@ use bitmaps::{Bits, BitsImpl};
 
 use crate::{
     ShadowError,
+    handle::{HostShadow, KernelShadow},
     persist::PersistTrigger,
     policy::{AccessPolicy, PersistPolicy},
-    shadow::{HostShadow, KernelShadow},
     table::ShadowTable,
     types::StagingBuffer,
 };
