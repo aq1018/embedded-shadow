@@ -170,16 +170,38 @@ fn example_flash_sectors() {
 
     host.with_view(|view| {
         // Small writes accumulate
-        view.write_range(0x100, &[0x01; 32]).unwrap(); // Sector 0
-        view.write_range(0x200, &[0x02; 32]).unwrap(); // Sector 0
-        view.write_range(0x300, &[0x03; 32]).unwrap(); // Sector 0
+        view.with_wo_slice(0x100, 32, |mut slice| {
+            slice.fill(0x01);
+            (true, ())
+        })
+        .unwrap(); // Sector 0
+
+        view.with_wo_slice(0x200, 32, |mut slice| {
+            slice.fill(0x02);
+            (true, ())
+        })
+        .unwrap(); // Sector 0
+
+        view.with_wo_slice(0x300, 32, |mut slice| {
+            slice.fill(0x03);
+            (true, ())
+        })
+        .unwrap(); // Sector 0
 
         // Fourth write triggers batch persistence
-        view.write_range(0x1000, &[0x04; 32]).unwrap(); // Sector 1
+        view.with_wo_slice(0x1000, 32, |mut slice| {
+            slice.fill(0x04);
+            (true, ())
+        })
+        .unwrap(); // Sector 1
         // BatchedFlashTrigger would now persist sectors 0 and 1
 
         // Write to another sector
-        view.write_range(0x2000, &[0x05; 32]).unwrap(); // Sector 2
+        view.with_wo_slice(0x2000, 32, |mut slice| {
+            slice.fill(0x05);
+            (true, ())
+        })
+        .unwrap(); // Sector 2
         // Not persisted yet, waiting for more writes
     });
 }
@@ -198,15 +220,27 @@ fn example_critical_registers() {
 
     host.with_view(|view| {
         // Write to critical register - persists immediately
-        view.write_range(0x10, &[0xFF; 4]).unwrap();
+        view.with_wo_slice(0x10, 4, |mut slice| {
+            slice.fill(0xFF);
+            (true, ())
+        })
+        .unwrap();
         // ImmediatePersistTrigger executes right away
 
         // Write to non-critical area - not persisted
-        view.write_range(0x80, &[0xAA; 4]).unwrap();
+        view.with_wo_slice(0x80, 4, |mut slice| {
+            slice.fill(0xAA);
+            (true, ())
+        })
+        .unwrap();
         // No persistence triggered
 
         // Another critical write - persists immediately
-        view.write_range(0x00, &[0x12, 0x34]).unwrap();
+        view.with_wo_slice(0x00, 2, |mut slice| {
+            slice.copy_from_slice(&[0x12, 0x34]);
+            (true, ())
+        })
+        .unwrap();
         // ImmediatePersistTrigger executes again
     });
 }
@@ -292,13 +326,25 @@ fn example_selective_persistence() {
 
     host.with_view(|view| {
         // Write to config area - will persist
-        view.write_range(0x050, &[0x11; 8]).unwrap(); // boot_config
+        view.with_wo_slice(0x050, 8, |mut slice| {
+            slice.fill(0x11);
+            (true, ())
+        })
+        .unwrap(); // boot_config
 
         // Write to data area - won't persist
-        view.write_range(0x300, &[0x22; 8]).unwrap(); // Not config
+        view.with_wo_slice(0x300, 8, |mut slice| {
+            slice.fill(0x22);
+            (true, ())
+        })
+        .unwrap(); // Not config
 
         // Write to different config - will persist separately
-        view.write_range(0x150, &[0x33; 8]).unwrap(); // app_config
+        view.with_wo_slice(0x150, 8, |mut slice| {
+            slice.fill(0x33);
+            (true, ())
+        })
+        .unwrap(); // app_config
 
         // ConfigGroupTrigger will persist boot_config and app_config
     });

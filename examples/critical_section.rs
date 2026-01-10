@@ -75,9 +75,13 @@ fn main() {
         // Write some data (sensor readings, control values, etc.)
         host.with_view(|view| {
             let addr = (cycle * 32) as u16;
-            let data = vec![cycle as u8 + 0x10; 16];
-            println!("  Writing {} bytes to 0x{:04X}", data.len(), addr);
-            view.write_range(addr, &data).unwrap();
+            let value = cycle as u8 + 0x10;
+            println!("  Writing 16 bytes to 0x{:04X}", addr);
+            view.with_wo_slice(addr, 16, |mut slice| {
+                slice.fill(value);
+                (true, ())
+            })
+            .unwrap();
         });
 
         // Trigger "interrupt"
@@ -116,15 +120,16 @@ fn handle_interrupt() {
                     dirty_found = true;
 
                     // Read the dirty data
-                    let mut buffer = [0u8; 32];
-                    view.read_range(addr, &mut buffer).unwrap();
-
-                    // In real system, would write to hardware registers here
-                    println!(
-                        "    Block {}: Dirty - first 8 bytes: {:02X?}",
-                        block,
-                        &buffer[0..8]
-                    );
+                    view.with_ro_slice(addr, 32, |slice| {
+                        // In real system, would write to hardware registers here
+                        let mut first_bytes = [0u8; 8];
+                        slice.copy_to_slice_at(0, &mut first_bytes);
+                        println!(
+                            "    Block {}: Dirty - first 8 bytes: {:02X?}",
+                            block, first_bytes
+                        );
+                    })
+                    .unwrap();
                 }
             }
 

@@ -3,13 +3,24 @@
 //! This example demonstrates:
 //! - Adding a staging buffer to shadow storage
 //! - Staging multiple writes before committing
-//! - Reading with overlay to preview staged changes
 //! - Atomic commit of all staged writes
 //! - Rollback capability by clearing staged writes
+//! - Using typed slice primitives with structured data
 
 #![no_std]
 
 use embedded_shadow::prelude::*;
+
+// ============ Register Layout ============
+// PID controller parameters (staged atomically)
+// Layout: p_gain (u16) | i_gain (u16) | d_gain (u16) | output_limit (u16)
+const PID_ADDR: u16 = 0x100;
+const PID_SIZE: usize = 8;
+
+// Sensor calibration (staged atomically)
+// Layout: offset (i16) | scale (u16) | min_value (i16) | max_value (i16)
+const SENSOR_CAL_ADDR: u16 = 0x180;
+const SENSOR_CAL_SIZE: usize = 8;
 
 pub fn main() {
     // Create base shadow storage
@@ -30,77 +41,120 @@ pub fn main() {
 
     let host = staged_storage.host_shadow();
 
-    // ========== Example 1: Preview Changes Before Commit ==========
+    // ========== Example 1: Stage and Commit with Typed Primitives ==========
     host.with_view(|view| {
-        // Write initial data directly to shadow
-        view.write_range(0x00, &[0xAA; 8]).unwrap();
+        // Initialize PID parameters directly
+        view.with_wo_slice(PID_ADDR, PID_SIZE, |mut slice| {
+            slice.write_u16_le_at(0, 100); // p_gain
+            slice.write_u16_le_at(2, 50); // i_gain
+            slice.write_u16_le_at(4, 25); // d_gain
+            slice.write_u16_le_at(6, 1000); // output_limit
+            (true, ())
+        })
+        .unwrap();
 
-        // Stage some changes (not committed yet)
-        view.write_range_staged(0x00, &[0x11, 0x22, 0x33, 0x44])
-            .unwrap();
-        view.write_range_staged(0x10, &[0x55, 0x66, 0x77, 0x88])
-            .unwrap();
+        // Stage new PID values atomically (not committed yet)
+        view.alloc_staged(PID_ADDR, PID_SIZE, |mut slice| {
+            slice.write_u16_le_at(0, 200); // new p_gain
+            slice.write_u16_le_at(2, 100); // new i_gain
+            slice.write_u16_le_at(4, 50); // new d_gain
+            slice.write_u16_le_at(6, 2000); // new output_limit
+            (true, ())
+        })
+        .unwrap();
 
-        // Read with overlay - sees staged changes overlaid on base data
-        let mut buffer = [0u8; 8];
-        view.read_range_overlay(0x00, &mut buffer).unwrap();
-        assert_eq!(&buffer[0..4], &[0x11, 0x22, 0x33, 0x44]); // Staged data
-        assert_eq!(&buffer[4..8], &[0xAA; 4]); // Original data
+        // Regular read still sees original data (staged changes not yet applied)
+        view.with_ro_slice(PID_ADDR, PID_SIZE, |slice| {
+            assert_eq!(slice.read_u16_le_at(0), 100); // Still original p_gain
+            assert_eq!(slice.read_u16_le_at(6), 1000); // Still original output_limit
+        })
+        .unwrap();
 
-        // Regular read still sees original data
-        view.read_range(0x00, &mut buffer).unwrap();
-        assert_eq!(buffer, [0xAA; 8]); // All original
+        // Commit staged changes atomically
+        view.commit_staged().unwrap();
 
-        // Commit staged changes
-        view.commit().unwrap();
-
-        // Now regular read sees the changes
-        view.read_range(0x00, &mut buffer).unwrap();
-        assert_eq!(&buffer[0..4], &[0x11, 0x22, 0x33, 0x44]); // Now committed
+        // Now regular read sees the new values
+        view.with_ro_slice(PID_ADDR, PID_SIZE, |slice| {
+            assert_eq!(slice.read_u16_le_at(0), 200); // New p_gain
+            assert_eq!(slice.read_u16_le_at(2), 100); // New i_gain
+            assert_eq!(slice.read_u16_le_at(4), 50); // New d_gain
+            assert_eq!(slice.read_u16_le_at(6), 2000); // New output_limit
+        })
+        .unwrap();
     });
 
     // ========== Example 2: Rollback Uncommitted Changes ==========
     host.with_view(|view| {
-        // Stage multiple register updates
-        view.write_range_staged(0x100, &[0x01, 0x02]).unwrap();
-        view.write_range_staged(0x102, &[0x03, 0x04]).unwrap();
-        view.write_range_staged(0x104, &[0x05, 0x06]).unwrap();
+        // Stage sensor calibration updates using typed primitives
+        // Layout: offset (i16) | scale (u16) | min_value (i16) | max_value (i16)
+        view.alloc_staged(SENSOR_CAL_ADDR, SENSOR_CAL_SIZE, |mut slice| {
+            slice.write_i16_le_at(0, -50); // offset
+            slice.write_u16_le_at(2, 1000); // scale
+            slice.write_i16_le_at(4, -100); // min_value
+            slice.write_i16_le_at(6, 500); // max_value
+            (true, ())
+        })
+        .unwrap();
 
-        // Verify staged data exists
-        let mut buffer = [0u8; 6];
-        view.read_range_overlay(0x100, &mut buffer).unwrap();
-        assert_eq!(buffer, [0x01, 0x02, 0x03, 0x04, 0x05, 0x06]);
-
-        // Decide not to commit - just exit the view
-        // Staged changes are automatically discarded
+        // Simulate validation failure - decide not to commit
+        let is_valid = false; // Validation failed!
+        if is_valid {
+            view.commit_staged().unwrap();
+        }
+        // Staged changes are automatically discarded when view exits
     });
 
     // Verify changes were not committed
     host.with_view(|view| {
-        let mut buffer = [0u8; 6];
-        view.read_range(0x100, &mut buffer).unwrap();
-        assert_eq!(buffer, [0u8; 6]); // Still zeros, changes were discarded
+        view.with_ro_slice(SENSOR_CAL_ADDR, SENSOR_CAL_SIZE, |slice| {
+            // All zeros - staged changes were discarded
+            assert_eq!(slice.read_i16_le_at(0), 0);
+            assert_eq!(slice.read_u16_le_at(2), 0);
+        })
+        .unwrap();
     });
 
     // ========== Example 3: Overlapping Staged Writes ==========
     host.with_view(|view| {
-        // Write base data
-        view.write_range(0x180, &[0xFF; 16]).unwrap();
+        // Initialize sensor calibration with defaults
+        view.with_wo_slice(SENSOR_CAL_ADDR, SENSOR_CAL_SIZE, |mut slice| {
+            slice.write_i16_le_at(0, 0); // offset
+            slice.write_u16_le_at(2, 256); // scale (1.0 in Q8)
+            slice.write_i16_le_at(4, 0); // min_value
+            slice.write_i16_le_at(6, 100); // max_value
+            (true, ())
+        })
+        .unwrap();
 
-        // Stage overlapping writes (later writes override earlier ones)
-        view.write_range_staged(0x180, &[0x01, 0x02, 0x03, 0x04])
-            .unwrap();
-        view.write_range_staged(0x182, &[0xAA, 0xBB]).unwrap(); // Overlaps previous
+        // Stage full calibration update
+        view.alloc_staged(SENSOR_CAL_ADDR, SENSOR_CAL_SIZE, |mut slice| {
+            slice.write_i16_le_at(0, 10); // offset
+            slice.write_u16_le_at(2, 512); // scale (2.0 in Q8)
+            slice.write_i16_le_at(4, -50); // min_value
+            slice.write_i16_le_at(6, 200); // max_value
+            (true, ())
+        })
+        .unwrap();
 
-        // Read with overlay shows the combined result
-        let mut buffer = [0u8; 8];
-        view.read_range_overlay(0x180, &mut buffer).unwrap();
-        assert_eq!(&buffer[0..2], &[0x01, 0x02]); // From first staged write
-        assert_eq!(&buffer[2..4], &[0xAA, 0xBB]); // From second staged write (override)
-        assert_eq!(&buffer[4..8], &[0xFF; 4]); // Original data
+        // Stage partial override - just update min/max (overlaps previous)
+        view.alloc_staged(SENSOR_CAL_ADDR + 4, 4, |mut slice| {
+            slice.write_i16_le_at(0, -100); // override min_value
+            slice.write_i16_le_at(2, 500); // override max_value
+            (true, ())
+        })
+        .unwrap();
 
         // Commit all staged changes
-        view.commit().unwrap();
+        view.commit_staged().unwrap();
+
+        // Read back - later staged writes override earlier ones
+        view.with_ro_slice(SENSOR_CAL_ADDR, SENSOR_CAL_SIZE, |slice| {
+            assert_eq!(slice.read_i16_le_at(0), 10); // From first staged write
+            assert_eq!(slice.read_u16_le_at(2), 512); // From first staged write
+            assert_eq!(slice.read_i16_le_at(4), -100); // From second staged write (override)
+            assert_eq!(slice.read_i16_le_at(6), 500); // From second staged write (override)
+        })
+        .unwrap();
     });
 
     // ========== Example 4: Staging Buffer Limits ==========
@@ -111,10 +165,14 @@ pub fn main() {
         // Stage writes until we hit capacity
         for i in 0..20 {
             let addr = (i * 16) as u16;
-            let data = [(i + 1) as u8; 8];
 
-            match view.write_range_staged(addr, &data) {
-                Ok(()) => total_staged += 1,
+            let result = view.alloc_staged(addr, 8, |mut slice| {
+                slice.fill((i + 1) as u8);
+                (true, ())
+            });
+
+            match result {
+                Ok(_) => total_staged += 1,
                 Err(ShadowError::StageFull) => break,
                 Err(e) => panic!("Unexpected error: {:?}", e),
             }

@@ -221,7 +221,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_simple_builder() {
+    fn test_builder_default_and_custom_policies() {
+        // Test default policies (simple builder)
         let _storage = ShadowStorageBuilder::new()
             .total_size::<1024>()
             .block_size::<64>()
@@ -229,10 +230,8 @@ mod tests {
             .default_access()
             .no_persist()
             .build();
-    }
 
-    #[test]
-    fn test_builder_with_custom_policies() {
+        // Test custom policies
         struct TestAccessPolicy;
         impl AccessPolicy for TestAccessPolicy {
             fn can_read(&self, _addr: u16, _len: usize) -> bool {

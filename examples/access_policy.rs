@@ -98,18 +98,33 @@ fn example_bootloader_protection() {
 
     host.with_view(|view| {
         // Try to write to bootloader region - should fail
-        assert_eq!(view.write_range(0x00, &[0xFF; 4]), Err(ShadowError::Denied));
         assert_eq!(
-            view.write_range(0xFF, &[0xFF; 2]), // Crosses into protected region
+            view.with_wo_slice(0x00, 4, |mut slice| {
+                slice.fill(0xFF);
+                (true, ())
+            }),
+            Err(ShadowError::Denied)
+        );
+        assert_eq!(
+            view.with_wo_slice(0xFF, 2, |mut slice| {
+                // Crosses into protected region
+                slice.fill(0xFF);
+                (true, ())
+            }),
             Err(ShadowError::Denied)
         );
 
         // Write to application region - should succeed
-        assert!(view.write_range(0x100, &[0xAA; 4]).is_ok());
+        assert!(
+            view.with_wo_slice(0x100, 4, |mut slice| {
+                slice.fill(0xAA);
+                (true, ())
+            })
+            .is_ok()
+        );
 
         // Read from bootloader region - should succeed
-        let mut buffer = [0u8; 4];
-        assert!(view.read_range(0x00, &mut buffer).is_ok());
+        assert!(view.with_ro_slice(0x00, 4, |_slice| {}).is_ok());
     });
 }
 
@@ -128,28 +143,53 @@ fn example_peripheral_access() {
         // Access valid peripheral regions
 
         // UART registers (0x400-0x41F)
-        assert!(view.write_range(0x400, &[0x55; 4]).is_ok());
-        assert!(view.read_range(0x400, &mut [0u8; 4]).is_ok());
+        assert!(
+            view.with_wo_slice(0x400, 4, |mut slice| {
+                slice.fill(0x55);
+                (true, ())
+            })
+            .is_ok()
+        );
+        assert!(view.with_ro_slice(0x400, 4, |_slice| {}).is_ok());
 
         // GPIO registers (0x500-0x53F)
-        assert!(view.write_range(0x500, &[0xAA; 8]).is_ok());
+        assert!(
+            view.with_wo_slice(0x500, 8, |mut slice| {
+                slice.fill(0xAA);
+                (true, ())
+            })
+            .is_ok()
+        );
 
         // Timer registers (0x600-0x61F)
-        assert!(view.write_range(0x600, &[0x01, 0x02]).is_ok());
+        assert!(
+            view.with_wo_slice(0x600, 2, |mut slice| {
+                slice.copy_from_slice(&[0x01, 0x02]);
+                (true, ())
+            })
+            .is_ok()
+        );
 
         // Try to access non-peripheral memory - should fail
         assert_eq!(
-            view.write_range(0x300, &[0xFF; 4]),
+            view.with_wo_slice(0x300, 4, |mut slice| {
+                slice.fill(0xFF);
+                (true, ())
+            }),
             Err(ShadowError::Denied)
         );
         assert_eq!(
-            view.read_range(0x300, &mut [0u8; 4]),
+            view.with_ro_slice(0x300, 4, |_slice| {}),
             Err(ShadowError::Denied)
         );
 
         // Try to access across peripheral boundary - should fail
         assert_eq!(
-            view.write_range(0x41E, &[0xFF; 4]), // Crosses UART boundary
+            view.with_wo_slice(0x41E, 4, |mut slice| {
+                // Crosses UART boundary
+                slice.fill(0xFF);
+                (true, ())
+            }),
             Err(ShadowError::Denied)
         );
     });
@@ -171,19 +211,41 @@ fn example_layered_security() {
 
     host.with_view(|view| {
         // Can't write to bootloader even if it was a peripheral
-        assert_eq!(view.write_range(0x00, &[0xFF; 4]), Err(ShadowError::Denied));
+        assert_eq!(
+            view.with_wo_slice(0x00, 4, |mut slice| {
+                slice.fill(0xFF);
+                (true, ())
+            }),
+            Err(ShadowError::Denied)
+        );
 
         // Can't access non-peripheral memory even outside bootloader
         assert_eq!(
-            view.write_range(0x200, &[0xFF; 4]),
+            view.with_wo_slice(0x200, 4, |mut slice| {
+                slice.fill(0xFF);
+                (true, ())
+            }),
             Err(ShadowError::Denied)
         );
 
         // Can only access allowed peripheral regions outside bootloader
-        assert!(view.write_range(0x400, &[0x12; 4]).is_ok()); // UART - OK
+        assert!(
+            view.with_wo_slice(0x400, 4, |mut slice| {
+                // UART - OK
+                slice.fill(0x12);
+                (true, ())
+            })
+            .is_ok()
+        );
 
         // Special case: write-only timer clear register
-        assert!(view.write_range(0x608, &[0x00; 4]).is_ok());
+        assert!(
+            view.with_wo_slice(0x608, 4, |mut slice| {
+                slice.fill(0x00);
+                (true, ())
+            })
+            .is_ok()
+        );
     });
 }
 

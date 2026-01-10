@@ -27,28 +27,28 @@ where
         }
     }
 
-    fn apply_dirty_range(&mut self, addr: u16, len: usize, dirty: bool) -> Result<(), ShadowError> {
-        let (sb, eb) = block_span::<TS, BS, BC>(addr, len)?;
-        for block in sb..=eb {
-            self.dirty.set(block, dirty);
-        }
-        Ok(())
+    pub(crate) fn with_bytes<F, R>(&self, addr: u16, len: usize, f: F) -> Result<R, ShadowError>
+    where
+        F: FnOnce(&[u8]) -> Result<R, ShadowError>,
+    {
+        let (offset, end) = range_span::<TS>(addr, len)?;
+        f(&self.bytes[offset..end])
     }
 
-    pub(crate) fn read_range(&self, addr: u16, out: &mut [u8]) -> Result<(), ShadowError> {
-        let (offset, end) = range_span::<TS>(addr, out.len())?;
-        out.copy_from_slice(&self.bytes[offset..end]);
-        Ok(())
+    pub(crate) fn with_bytes_mut<F, R>(
+        &mut self,
+        addr: u16,
+        len: usize,
+        f: F,
+    ) -> Result<R, ShadowError>
+    where
+        F: FnOnce(&mut [u8]) -> Result<R, ShadowError>,
+    {
+        let (offset, end) = range_span::<TS>(addr, len)?;
+        f(&mut self.bytes[offset..end])
     }
 
-    pub(crate) fn write_range(&mut self, addr: u16, data: &[u8]) -> Result<(), ShadowError> {
-        let (offset, end) = range_span::<TS>(addr, data.len())?;
-        self.bytes[offset..end].copy_from_slice(data);
-
-        Ok(())
-    }
-
-    pub(crate) fn for_each_dirty_block<F>(&self, mut f: F) -> Result<(), ShadowError>
+    pub(crate) fn iter_dirty<F>(&self, mut f: F) -> Result<(), ShadowError>
     where
         F: FnMut(u16, &[u8]) -> Result<(), ShadowError>,
     {
@@ -76,12 +76,24 @@ where
         !self.dirty.is_empty()
     }
 
+    pub(crate) fn clear_dirty(&mut self) {
+        self.dirty = bitmaps::Bitmap::new();
+    }
+
     pub(crate) fn mark_dirty(&mut self, addr: u16, len: usize) -> Result<(), ShadowError> {
         self.apply_dirty_range(addr, len, true)
     }
 
-    pub(crate) fn clear_dirty(&mut self) {
-        self.dirty = bitmaps::Bitmap::new();
+    pub(crate) fn mark_clean(&mut self, addr: u16, len: usize) -> Result<(), ShadowError> {
+        self.apply_dirty_range(addr, len, false)
+    }
+
+    fn apply_dirty_range(&mut self, addr: u16, len: usize, dirty: bool) -> Result<(), ShadowError> {
+        let (sb, eb) = block_span::<TS, BS, BC>(addr, len)?;
+        for block in sb..=eb {
+            self.dirty.set(block, dirty);
+        }
+        Ok(())
     }
 }
 
@@ -99,22 +111,42 @@ mod tests {
     }
 
     #[test]
-    fn mark_dirty_single_block() {
-        let mut table: TestTable = ShadowTable::new();
-        table.mark_dirty(0, 1).unwrap();
-        assert!(table.is_dirty(0, 1).unwrap());
-        assert!(table.is_dirty(0, 4).unwrap()); // whole block 0
-        assert!(!table.is_dirty(4, 4).unwrap()); // block 1
-    }
+    fn dirty_tracking_scenarios() {
+        // Single block: mark byte 0, block 0 dirty, block 1 clean
+        {
+            let mut table: TestTable = ShadowTable::new();
+            table.mark_dirty(0, 1).unwrap();
+            assert!(table.is_dirty(0, 4).unwrap());
+            assert!(!table.is_dirty(4, 4).unwrap());
+        }
 
-    #[test]
-    fn mark_dirty_spanning_blocks() {
-        let mut table: TestTable = ShadowTable::new();
-        // Mark bytes 2-5 dirty (spans blocks 0 and 1)
-        table.mark_dirty(2, 4).unwrap();
-        assert!(table.is_dirty(0, 4).unwrap()); // block 0
-        assert!(table.is_dirty(4, 4).unwrap()); // block 1
-        assert!(!table.is_dirty(8, 4).unwrap()); // block 2
+        // Spanning blocks: mark bytes 2-5, blocks 0-1 dirty, block 2 clean
+        {
+            let mut table: TestTable = ShadowTable::new();
+            table.mark_dirty(2, 4).unwrap();
+            assert!(table.is_dirty(0, 4).unwrap());
+            assert!(table.is_dirty(4, 4).unwrap());
+            assert!(!table.is_dirty(8, 4).unwrap());
+        }
+
+        // Exact block boundary: mark at addr=4, only block 1 dirty
+        {
+            let mut table: TestTable = ShadowTable::new();
+            table.mark_dirty(4, 4).unwrap();
+            assert!(table.is_dirty(4, 4).unwrap());
+            assert!(!table.is_dirty(0, 4).unwrap());
+            assert!(!table.is_dirty(8, 4).unwrap());
+        }
+
+        // Spanning all blocks: mark entire table
+        {
+            let mut table: TestTable = ShadowTable::new();
+            table.mark_dirty(0, 16).unwrap();
+            assert!(table.is_dirty(0, 4).unwrap());
+            assert!(table.is_dirty(4, 4).unwrap());
+            assert!(table.is_dirty(8, 4).unwrap());
+            assert!(table.is_dirty(12, 4).unwrap());
+        }
     }
 
     #[test]
@@ -132,49 +164,17 @@ mod tests {
     }
 
     #[test]
-    fn any_dirty_returns_correct_value() {
+    fn is_dirty_query_scenarios() {
+        // Test any_dirty and is_dirty with partial block queries
         let mut table: TestTable = ShadowTable::new();
+
+        // Initially: no dirty blocks
         assert!(!table.any_dirty());
+        assert!(!table.is_dirty(0, 16).unwrap());
 
-        table.mark_dirty(0, 1).unwrap();
+        // Mark only block 1 dirty
+        table.mark_dirty(4, 4).unwrap();
         assert!(table.any_dirty());
-    }
-
-    #[test]
-    fn read_write_range() {
-        let mut table: TestTable = ShadowTable::new();
-        let data = [1, 2, 3, 4];
-        table.write_range(4, &data).unwrap();
-
-        let mut out = [0u8; 4];
-        table.read_range(4, &mut out).unwrap();
-        assert_eq!(out, data);
-    }
-
-    #[test]
-    fn read_write_range_errors() {
-        let mut table: TestTable = ShadowTable::new();
-
-        // Zero length
-        assert_eq!(table.read_range(0, &mut []), Err(ShadowError::ZeroLength));
-        assert_eq!(table.write_range(0, &[]), Err(ShadowError::ZeroLength));
-
-        // Out of bounds
-        let mut out = [0u8; 4];
-        assert_eq!(
-            table.read_range(14, &mut out),
-            Err(ShadowError::OutOfBounds)
-        );
-        assert_eq!(
-            table.write_range(14, &[1, 2, 3, 4]),
-            Err(ShadowError::OutOfBounds)
-        );
-    }
-
-    #[test]
-    fn partial_block_queries() {
-        let mut table: TestTable = ShadowTable::new();
-        table.mark_dirty(4, 4).unwrap(); // only block 1
 
         // Queries that include block 1 should return dirty
         assert!(table.is_dirty(3, 2).unwrap()); // spans blocks 0-1
@@ -184,5 +184,30 @@ mod tests {
         // Queries that don't include block 1
         assert!(!table.is_dirty(0, 4).unwrap()); // block 0 only
         assert!(!table.is_dirty(8, 8).unwrap()); // blocks 2-3
+    }
+
+    #[test]
+    fn with_bytes_errors() {
+        let mut table: TestTable = ShadowTable::new();
+
+        // Zero length
+        assert_eq!(
+            table.with_bytes(0, 0, |_| Ok(())),
+            Err(ShadowError::ZeroLength)
+        );
+        assert_eq!(
+            table.with_bytes_mut(0, 0, |_| Ok(())),
+            Err(ShadowError::ZeroLength)
+        );
+
+        // Out of bounds
+        assert_eq!(
+            table.with_bytes(14, 4, |_| Ok(())),
+            Err(ShadowError::OutOfBounds)
+        );
+        assert_eq!(
+            table.with_bytes_mut(14, 4, |_| Ok(())),
+            Err(ShadowError::OutOfBounds)
+        );
     }
 }

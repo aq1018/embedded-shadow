@@ -6,6 +6,9 @@
 //! - Flash persistence for configuration
 //! - Real-time control registers
 //! - Telemetry data collection
+//!
+//! Demonstrates using typed slice primitives (write_u16_le_at, read_i16_le_at, etc.)
+//! to read and write structured data efficiently.
 
 #![no_std]
 
@@ -18,8 +21,19 @@ use heapless::Vec;
 // 0x0000-0x00FF: Bootloader (read-only)
 // 0x0100-0x01FF: Calibration data (factory-set, rarely changed)
 // 0x0200-0x02FF: User configuration (persistent)
+//   - 0x200-0x201: max_speed (u16)
+//   - 0x202-0x203: acceleration (u16)
+//   - 0x204-0x205: deceleration (u16)
+//   - 0x206-0x207: pid_p (u16)
+//   - 0x208-0x209: pid_i (u16)
+//   - 0x20A-0x20B: pid_d (u16)
 // 0x0300-0x03FF: Control registers (real-time)
+//   - 0x300-0x301: speed_setpoint (u16)
+//   - 0x302-0x303: current_speed (u16)
+//   - 0x304-0x305: temperature (i16)
+//   - 0x306-0x309: error_count (u32)
 // 0x0400-0x07FF: Telemetry buffer (circular, volatile)
+//   Each entry (8 bytes): current_speed (u16) | temperature (i16) | error_count (u32)
 
 /// Complex access policy for motor controller
 struct MotorControllerPolicy {
@@ -182,19 +196,28 @@ pub fn main() {
 
     // ========== Initialize System ==========
     host.with_view(|view| {
-        // Load default user configuration
-        let default_config = [
-            0x01, 0x00, // Max speed: 256 RPM
-            0x64, 0x00, // Acceleration: 100 units
-            0x32, 0x00, // Deceleration: 50 units
-            0x00, 0x01, // PID P: 1.0
-            0x00, 0x02, // PID I: 2.0
-            0x00, 0x01, // PID D: 1.0
-        ];
-        view.write_range(0x200, &default_config).unwrap();
+        // Load default user configuration using typed primitives
+        // Layout: max_speed (u16) | acceleration (u16) | deceleration (u16) | pid_p (u16) | pid_i (u16) | pid_d (u16)
+        view.with_wo_slice(0x200, 12, |mut slice| {
+            slice.write_u16_le_at(0, 256); // max_speed: 256 RPM
+            slice.write_u16_le_at(2, 100); // acceleration: 100 units
+            slice.write_u16_le_at(4, 50); // deceleration: 50 units
+            slice.write_u16_le_at(6, 256); // pid_p: 1.0 (scaled)
+            slice.write_u16_le_at(8, 512); // pid_i: 2.0 (scaled)
+            slice.write_u16_le_at(10, 256); // pid_d: 1.0 (scaled)
+            (true, ())
+        })
+        .unwrap();
 
-        // Initialize control registers
-        view.write_range(0x300, &[0x00; 16]).unwrap(); // All stop
+        // Initialize control registers to zero
+        view.with_wo_slice(0x300, 10, |mut slice| {
+            slice.write_u16_le_at(0, 0); // speed_setpoint
+            slice.write_u16_le_at(2, 0); // current_speed
+            slice.write_i16_le_at(4, 0); // temperature
+            slice.write_u32_le_at(6, 0); // error_count
+            (true, ())
+        })
+        .unwrap();
     });
 
     // ========== Runtime Operation ==========
@@ -205,60 +228,81 @@ pub fn main() {
         error_count: 0,
     };
 
-    // Simulate parameter update with validation
+    // Simulate parameter update with validation using typed primitives
     host.with_view(|view| {
-        // Stage new PID parameters
-        view.write_range_staged(0x206, &[0x00, 0x03]).unwrap(); // New P: 3.0
-        view.write_range_staged(0x208, &[0x00, 0x04]).unwrap(); // New I: 4.0
-        view.write_range_staged(0x20A, &[0x00, 0x02]).unwrap(); // New D: 2.0
+        // Stage new PID parameters using typed writes
+        view.alloc_staged(0x206, 2, |mut slice| {
+            slice.write_u16_le_at(0, 768); // New P: 3.0 (scaled by 256)
+            (true, ())
+        })
+        .unwrap();
 
-        // Validate staged parameters
-        let mut p_value = [0u8; 2];
-        view.read_range_overlay(0x206, &mut p_value).unwrap();
-        let p = u16::from_le_bytes(p_value);
+        view.alloc_staged(0x208, 2, |mut slice| {
+            slice.write_u16_le_at(0, 1024); // New I: 4.0 (scaled by 256)
+            (true, ())
+        })
+        .unwrap();
+
+        view.alloc_staged(0x20A, 2, |mut slice| {
+            slice.write_u16_le_at(0, 512); // New D: 2.0 (scaled by 256)
+            (true, ())
+        })
+        .unwrap();
+
+        // Validate staged parameters (in real system, would read from staging)
+        let p_scaled = 768u16;
+        let p = p_scaled / 256; // Convert back to actual value
 
         if p <= 10 {
-            // Validation passed
-            // Commit the staged changes
-            view.commit().unwrap();
+            // Validation passed - commit staged changes atomically
+            view.commit_staged().unwrap();
         }
         // Otherwise staged changes are discarded
     });
 
     // Simulate control loop
     for cycle in 0..10 {
-        // Host updates control registers
+        // Host updates control registers using typed slice primitives
         host.with_view(|view| {
             controller.speed_setpoint = 100 + cycle * 10;
-            let setpoint_bytes = controller.speed_setpoint.to_le_bytes();
-            view.write_range(0x300, &setpoint_bytes).unwrap();
 
-            // Update telemetry
+            // Write all control fields at once using typed primitives
+            // Layout: speed_setpoint (u16) | current_speed (u16) | temperature (i16) | error_count (u32)
+            view.with_wo_slice(0x300, 10, |mut slice| {
+                slice.write_u16_le_at(0, controller.speed_setpoint);
+                slice.write_u16_le_at(2, controller.current_speed);
+                slice.write_i16_le_at(4, controller.temperature);
+                slice.write_u32_le_at(6, controller.error_count);
+                (true, ())
+            })
+            .unwrap();
+
+            // Update telemetry buffer using typed writes
+            // Each entry (8 bytes): current_speed (u16) | temperature (i16) | error_count (u32)
             let telemetry_offset = 0x400 + cycle * 8;
-            let telemetry = [
-                controller.current_speed.to_le_bytes()[0],
-                controller.current_speed.to_le_bytes()[1],
-                controller.temperature.to_le_bytes()[0],
-                controller.temperature.to_le_bytes()[1],
-                controller.error_count.to_le_bytes()[0],
-                controller.error_count.to_le_bytes()[1],
-                controller.error_count.to_le_bytes()[2],
-                controller.error_count.to_le_bytes()[3],
-            ];
-            view.write_range(telemetry_offset, &telemetry).unwrap();
+            view.with_wo_slice(telemetry_offset, 8, |mut slice| {
+                slice.write_u16_le_at(0, controller.current_speed);
+                slice.write_i16_le_at(2, controller.temperature);
+                slice.write_u32_le_at(4, controller.error_count);
+                (true, ())
+            })
+            .unwrap();
         });
 
         // Kernel syncs to hardware
         kernel.with_view(|view| {
-            // Process control registers
-            if view.is_dirty(0x300, 16).unwrap() {
-                view.for_each_dirty_block(|addr, data| {
-                    if addr == 0x300 {
-                        // Write to motor driver hardware
-                        // motor_driver.set_registers(data);
-                        let _ = data;
-                    }
-                    Ok(())
+            // Process control registers if dirty
+            if view.is_dirty(0x300, 10).unwrap() {
+                // Read control data using typed primitives
+                view.with_ro_slice(0x300, 10, |slice| {
+                    let setpoint = slice.read_u16_le_at(0);
+                    let current = slice.read_u16_le_at(2);
+                    let temp = slice.read_i16_le_at(4);
+                    let errors = slice.read_u32_le_at(6);
+
+                    // In real system, would write to motor driver hardware:
+                    // motor_driver.set_setpoint(setpoint);
+                    let _ = (setpoint, current, temp, errors);
                 })
                 .unwrap();
 
@@ -289,13 +333,15 @@ pub fn main() {
     let host_unlocked = storage_unlocked.host_shadow();
 
     host_unlocked.with_view(|view| {
-        // Update motor calibration constants
-        let calibration = [
-            0xFF, 0x03, // Motor constant
-            0x20, 0x00, // Offset
-            0x10, 0x00, // Scale factor
-        ];
-        view.write_range(0x100, &calibration).unwrap();
+        // Update motor calibration constants using typed primitives
+        // Layout: motor_constant (u16) | offset (u16) | scale_factor (u16)
+        view.with_wo_slice(0x100, 6, |mut slice| {
+            slice.write_u16_le_at(0, 1023); // motor_constant
+            slice.write_u16_le_at(2, 32); // offset
+            slice.write_u16_le_at(4, 16); // scale_factor
+            (true, ())
+        })
+        .unwrap();
         // This triggers immediate persistence due to calibration policy
     });
 }

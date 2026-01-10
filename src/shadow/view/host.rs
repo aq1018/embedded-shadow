@@ -1,7 +1,10 @@
 use core::marker::PhantomData;
 
 use crate::shadow::{
-    AccessPolicy, PersistTrigger, ShadowError, policy::PersistPolicy, table::ShadowTable,
+    AccessPolicy, PersistTrigger, ShadowError,
+    policy::PersistPolicy,
+    slice::{ROSlice, RWSlice, WOSlice},
+    table::ShadowTable,
 };
 
 /// Application/host-side view of the shadow table.
@@ -45,48 +48,108 @@ where
         }
     }
 
-    /// Reads data from the shadow table.
+    /// Provides zero-copy read access via ROSlice.
     ///
     /// Returns `Denied` if the access policy rejects the read.
-    pub fn read_range(&self, addr: u16, out: &mut [u8]) -> Result<(), ShadowError> {
-        if !self.access_policy.can_read(addr, out.len()) {
+    pub fn with_ro_slice<F, R>(&self, addr: u16, len: usize, f: F) -> Result<R, ShadowError>
+    where
+        F: FnOnce(ROSlice<'_>) -> R,
+    {
+        if !self.access_policy.can_read(addr, len) {
             return Err(ShadowError::Denied);
         }
-        self.table.read_range(addr, out)
+        self.table
+            .with_bytes(addr, len, |data| Ok(f(ROSlice::new(data))))
     }
 
-    /// Writes data to the shadow table, marking blocks dirty.
+    /// Provides zero-copy write access via WOSlice.
     ///
-    /// May trigger persistence based on the configured policy.
-    pub fn write_range(&mut self, addr: u16, data: &[u8]) -> Result<(), ShadowError> {
-        self.write_range_no_persist(addr, data)?;
-
-        let should_persist =
-            self.persist_policy
-                .push_persist_keys_for_range(addr, data.len(), |key| {
-                    self.persist_trigger.push_key(key)
-                });
-
-        if should_persist {
-            self.persist_trigger.request_persist();
-        }
-
-        Ok(())
-    }
-
-    pub(crate) fn write_range_no_persist(
+    /// Returns `Denied` if the access policy rejects the write.
+    /// Return `(true, result)` from your callback to mark the range as modified.
+    /// If dirty, triggers persistence based on configured policy.
+    pub fn with_wo_slice<F, R>(
         &mut self,
         addr: u16,
-        data: &[u8],
-    ) -> Result<(), ShadowError> {
-        if !self.access_policy.can_write(addr, data.len()) {
+        len: usize,
+        f: F,
+    ) -> Result<(bool, R), ShadowError>
+    where
+        F: FnOnce(WOSlice<'_>) -> (bool, R),
+    {
+        if !self.access_policy.can_write(addr, len) {
             return Err(ShadowError::Denied);
         }
 
-        self.table.write_range(addr, data)?;
-        self.table.mark_dirty(addr, data.len())?;
+        let (is_dirty, result) =
+            self.with_bytes_mut_no_persist(addr, len, |data| f(WOSlice::new(data)))?;
 
-        Ok(())
+        if is_dirty {
+            let should_persist =
+                self.persist_policy
+                    .push_persist_keys_for_range(addr, len, |key| {
+                        self.persist_trigger.push_key(key)
+                    });
+
+            if should_persist {
+                self.persist_trigger.request_persist();
+            }
+        }
+
+        Ok((is_dirty, result))
+    }
+
+    /// Provides zero-copy read-write access via RWSlice.
+    ///
+    /// Returns `Denied` if the access policy rejects either read or write.
+    /// Return `(true, result)` from your callback to mark the range as modified.
+    /// If dirty, triggers persistence based on configured policy.
+    pub fn with_rw_slice<F, R>(
+        &mut self,
+        addr: u16,
+        len: usize,
+        f: F,
+    ) -> Result<(bool, R), ShadowError>
+    where
+        F: FnOnce(RWSlice<'_>) -> (bool, R),
+    {
+        if !self.access_policy.can_read(addr, len) || !self.access_policy.can_write(addr, len) {
+            return Err(ShadowError::Denied);
+        }
+
+        let (is_dirty, result) =
+            self.with_bytes_mut_no_persist(addr, len, |data| f(RWSlice::new(data)))?;
+
+        if is_dirty {
+            let should_persist =
+                self.persist_policy
+                    .push_persist_keys_for_range(addr, len, |key| {
+                        self.persist_trigger.push_key(key)
+                    });
+
+            if should_persist {
+                self.persist_trigger.request_persist();
+            }
+        }
+
+        Ok((is_dirty, result))
+    }
+
+    pub(crate) fn with_bytes_mut_no_persist<F, R>(
+        &mut self,
+        addr: u16,
+        len: usize,
+        f: F,
+    ) -> Result<(bool, R), ShadowError>
+    where
+        F: FnOnce(&mut [u8]) -> (bool, R),
+    {
+        let (is_dirty, result) = self.table.with_bytes_mut(addr, len, |data| Ok(f(data)))?;
+
+        if is_dirty {
+            self.table.mark_dirty(addr, len)?;
+        }
+
+        Ok((is_dirty, result))
     }
 }
 
@@ -94,141 +157,205 @@ where
 mod tests {
     use super::*;
     use crate::shadow::persist::NoPersist;
-    use crate::shadow::policy::{AllowAllPolicy, NoPersistPolicy};
-    use crate::shadow::test_support::{DenyAllPolicy, ReadOnlyBelow32, TestTable};
+    use crate::shadow::policy::NoPersistPolicy;
+    use crate::shadow::test_support::{
+        DenyAllPolicy, ReadOnlyBelow32, TestHostViewFixture, TestTable, assert_denied,
+    };
 
     #[test]
-    fn host_write_marks_dirty() {
+    fn with_wo_slice_marks_dirty_when_callback_returns_true() {
+        let mut fixture = TestHostViewFixture::new();
+
+        {
+            let mut view = fixture.view();
+            let (is_dirty, _) = view
+                .with_wo_slice(0, 4, |mut slice| {
+                    slice.copy_from_slice(&[0x01, 0x02, 0x03, 0x04]);
+                    (true, ())
+                })
+                .unwrap();
+            assert!(is_dirty);
+        }
+
+        assert!(fixture.table.is_dirty(0, 4).unwrap());
+    }
+
+    #[test]
+    fn with_wo_slice_no_dirty_when_callback_returns_false() {
+        let mut fixture = TestHostViewFixture::new();
+
+        {
+            let mut view = fixture.view();
+            let (is_dirty, _) = view
+                .with_wo_slice(0, 4, |mut slice| {
+                    slice.copy_from_slice(&[0x01, 0x02, 0x03, 0x04]);
+                    (false, ()) // Don't mark dirty
+                })
+                .unwrap();
+            assert!(!is_dirty);
+        }
+
+        assert!(!fixture.table.any_dirty());
+    }
+
+    #[test]
+    fn slice_access_denied_by_policy() {
         let mut table = TestTable::new();
-        let policy = AllowAllPolicy::default();
+        let policy = DenyAllPolicy;
         let persist_policy = NoPersistPolicy::default();
         let mut trigger = NoPersist;
 
+        // Test RO denied
         {
-            let mut view = HostView::new(&mut table, &policy, &persist_policy, &mut trigger);
-            view.write_range(0, &[0x01, 0x02, 0x03, 0x04]).unwrap();
+            let view = HostView::new(&mut table, &policy, &persist_policy, &mut trigger);
+            assert_denied(view.with_ro_slice(0, 4, |_slice| {}));
         }
 
+        // Test WO denied
+        {
+            let mut view = HostView::new(&mut table, &policy, &persist_policy, &mut trigger);
+            assert_denied(view.with_wo_slice(0, 4, |_| (false, ())));
+        }
+
+        // Test RW denied
+        {
+            let mut view = HostView::new(&mut table, &policy, &persist_policy, &mut trigger);
+            assert_denied(view.with_rw_slice(0, 4, |_| (false, ())));
+        }
+    }
+
+    #[test]
+    fn with_rw_slice_requires_both_permissions() {
+        let mut table = TestTable::new();
+        let policy = ReadOnlyBelow32; // Can read anywhere, write only >= 32
+        let persist_policy = NoPersistPolicy::default();
+        let mut trigger = NoPersist;
+
+        let mut view = HostView::new(&mut table, &policy, &persist_policy, &mut trigger);
+
+        // Below 32: can read but not write, so rw_slice should fail
+        assert_denied(view.with_rw_slice(0, 4, |_| (false, ())));
+
+        // At 32: can both read and write, so rw_slice should work
+        let result = view.with_rw_slice(32, 4, |_| (true, ()));
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn persist_not_triggered_when_dirty_false() {
+        use crate::shadow::policy::AllowAllPolicy;
+        use crate::shadow::test_support::{AlwaysPersistPolicy, TrackingPersistTrigger};
+
+        let mut table = TestTable::new();
+        let policy = AllowAllPolicy::default();
+        let persist_policy = AlwaysPersistPolicy; // Would trigger persist if dirty
+        let mut trigger = TrackingPersistTrigger::default();
+
+        {
+            let mut view = HostView::new(&mut table, &policy, &persist_policy, &mut trigger);
+
+            // Write data but return (false, ()) to indicate not dirty
+            view.with_wo_slice(0, 4, |mut slice| {
+                slice.copy_from_slice(&[0x01, 0x02, 0x03, 0x04]);
+                (false, ()) // Not dirty - should not trigger persist
+            })
+            .unwrap();
+        }
+
+        // Persist should NOT have been requested
+        assert!(!trigger.persist_requested);
+        // Table should not be dirty either
+        assert!(!table.any_dirty());
+    }
+
+    #[test]
+    fn wo_slice_triggers_persist_with_always_policy() {
+        use crate::shadow::policy::AllowAllPolicy;
+        use crate::shadow::test_support::{AlwaysPersistPolicy, TrackingPersistTrigger};
+
+        let mut table = TestTable::new();
+        let policy = AllowAllPolicy::default();
+        let persist_policy = AlwaysPersistPolicy;
+        let mut trigger = TrackingPersistTrigger::default();
+
+        {
+            let mut view = HostView::new(&mut table, &policy, &persist_policy, &mut trigger);
+            view.with_wo_slice(0, 4, |mut slice| {
+                slice.copy_from_slice(&[0x01, 0x02, 0x03, 0x04]);
+                (true, ()) // Mark dirty - should trigger persist
+            })
+            .unwrap();
+        }
+
+        assert!(trigger.persist_requested);
         assert!(table.is_dirty(0, 4).unwrap());
     }
 
     #[test]
-    fn host_write_spanning_blocks_marks_all_dirty() {
+    fn with_rw_slice_marks_dirty_and_triggers_persist() {
+        use crate::shadow::policy::AllowAllPolicy;
+        use crate::shadow::test_support::{AlwaysPersistPolicy, TrackingPersistTrigger};
+
         let mut table = TestTable::new();
         let policy = AllowAllPolicy::default();
-        let persist_policy = NoPersistPolicy::default();
-        let mut trigger = NoPersist;
+        let persist_policy = AlwaysPersistPolicy;
+        let mut trigger = TrackingPersistTrigger::default();
 
         {
             let mut view = HostView::new(&mut table, &policy, &persist_policy, &mut trigger);
-            // Write spans blocks 0 and 1 (bytes 8-23)
-            view.write_range(8, &[0xAA; 16]).unwrap();
+            let (is_dirty, _) = view
+                .with_rw_slice(0, 4, |mut slice| {
+                    slice.copy_from_slice(&[0xAA, 0xBB, 0xCC, 0xDD]);
+                    (true, ())
+                })
+                .unwrap();
+            assert!(is_dirty);
         }
 
-        // Both block 0 and block 1 should be dirty
-        assert!(table.is_dirty(0, 16).unwrap()); // block 0
-        assert!(table.is_dirty(16, 16).unwrap()); // block 1
+        assert!(trigger.persist_requested);
+        assert!(table.is_dirty(0, 4).unwrap());
     }
 
     #[test]
-    fn host_read_does_not_mark_dirty() {
-        let mut table = TestTable::new();
-        let policy = AllowAllPolicy::default();
-        let persist_policy = NoPersistPolicy::default();
-        let mut trigger = NoPersist;
+    fn with_rw_slice_read_then_write() {
+        let mut fixture = TestHostViewFixture::new();
 
-        let view = HostView::new(&mut table, &policy, &persist_policy, &mut trigger);
-
-        let mut buf = [0u8; 4];
-        view.read_range(0, &mut buf).unwrap();
-
-        assert!(!table.any_dirty());
-    }
-
-    #[test]
-    fn read_denied_returns_error() {
-        let mut table = TestTable::new();
-        let policy = DenyAllPolicy;
-        let persist_policy = NoPersistPolicy::default();
-        let mut trigger = NoPersist;
-
-        let view = HostView::new(&mut table, &policy, &persist_policy, &mut trigger);
-        let mut buf = [0u8; 4];
-
-        assert_eq!(view.read_range(0, &mut buf), Err(ShadowError::Denied));
-    }
-
-    #[test]
-    fn write_denied_returns_error() {
-        let mut table = TestTable::new();
-        let policy = DenyAllPolicy;
-        let persist_policy = NoPersistPolicy::default();
-        let mut trigger = NoPersist;
-
-        let mut view = HostView::new(&mut table, &policy, &persist_policy, &mut trigger);
-
-        assert_eq!(view.write_range(0, &[0x01, 0x02]), Err(ShadowError::Denied));
-    }
-
-    #[test]
-    fn denied_write_does_not_modify_state() {
-        let mut table = TestTable::new();
-        table.write_range(0, &[0xFF; 4]).unwrap();
-
-        let policy = DenyAllPolicy;
-        let persist_policy = NoPersistPolicy::default();
-        let mut trigger = NoPersist;
-
+        // Pre-populate some data
         {
-            let mut view = HostView::new(&mut table, &policy, &persist_policy, &mut trigger);
-            let _ = view.write_range(0, &[0x00; 4]); // Should fail
+            let mut view = fixture.view();
+            view.with_wo_slice(0, 4, |mut slice| {
+                slice.copy_from_slice(&[0x01, 0x02, 0x03, 0x04]);
+                (true, ())
+            })
+            .unwrap();
         }
 
-        // Original data unchanged
-        let mut buf = [0u8; 4];
-        table.read_range(0, &mut buf).unwrap();
-        assert_eq!(buf, [0xFF; 4]);
+        // Clear dirty for next test
+        fixture.table.clear_dirty();
 
-        // No dirty bits set
-        assert!(!table.any_dirty());
-    }
+        // Now read and modify using RW slice
+        {
+            let mut view = fixture.view();
+            let (is_dirty, read_value) = view
+                .with_rw_slice(0, 4, |mut slice| {
+                    let first_byte = slice.read_u8_at(0);
+                    slice.copy_from_slice(&[first_byte + 1, 0x22, 0x33, 0x44]);
+                    (true, first_byte)
+                })
+                .unwrap();
 
-    #[test]
-    fn denied_read_does_not_leak_data() {
-        let mut table = TestTable::new();
-        table.write_range(0, &[0xAA; 4]).unwrap();
+            assert!(is_dirty);
+            assert_eq!(read_value, 0x01);
+        }
 
-        let policy = DenyAllPolicy;
-        let persist_policy = NoPersistPolicy::default();
-        let mut trigger = NoPersist;
-
-        let view = HostView::new(&mut table, &policy, &persist_policy, &mut trigger);
-
-        let mut buf = [0x00u8; 4];
-        let _ = view.read_range(0, &mut buf); // Should fail
-
-        // Buffer unchanged (no data leaked)
-        assert_eq!(buf, [0x00; 4]);
-    }
-
-    #[test]
-    fn partial_policy_allows_permitted_ranges() {
-        let mut table = TestTable::new();
-        let policy = ReadOnlyBelow32;
-        let persist_policy = NoPersistPolicy::default();
-        let mut trigger = NoPersist;
-
-        let mut view = HostView::new(&mut table, &policy, &persist_policy, &mut trigger);
-
-        // Read should work anywhere
-        let mut buf = [0u8; 4];
-        assert!(view.read_range(0, &mut buf).is_ok());
-        assert!(view.read_range(32, &mut buf).is_ok());
-
-        // Write below 32 should fail
-        assert_eq!(view.write_range(0, &[0x01; 4]), Err(ShadowError::Denied));
-
-        // Write at 32 and above should work
-        assert!(view.write_range(32, &[0x01; 4]).is_ok());
+        // Verify data was modified
+        fixture
+            .table
+            .with_bytes(0, 4, |data| {
+                assert_eq!(data, &[0x02, 0x22, 0x33, 0x44]);
+                Ok(())
+            })
+            .unwrap();
+        assert!(fixture.table.is_dirty(0, 4).unwrap());
     }
 }

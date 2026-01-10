@@ -1,4 +1,8 @@
-use crate::shadow::{ShadowError, table::ShadowTable};
+use crate::shadow::{
+    ShadowError,
+    slice::{ROSlice, RWSlice},
+    table::ShadowTable,
+};
 
 /// Hardware/kernel-side view of the shadow table.
 ///
@@ -25,25 +29,36 @@ impl<'a, const TS: usize, const BS: usize, const BC: usize> KernelView<'a, TS, B
 where
     bitmaps::BitsImpl<BC>: bitmaps::Bits,
 {
-    /// Reads data from the shadow table without marking dirty.
-    pub fn read_range(&self, addr: u16, out: &mut [u8]) -> Result<(), ShadowError> {
-        self.table.read_range(addr, out)
-    }
-
-    /// Writes data to the shadow table without marking dirty.
-    ///
-    /// Use this to update the shadow after reading from hardware.
-    pub fn write_range(&mut self, addr: u16, data: &[u8]) -> Result<(), ShadowError> {
-        self.table.write_range(addr, data)?;
-        Ok(())
-    }
-
-    /// Iterates over each dirty block, providing its address and data.
-    pub fn for_each_dirty_block<F>(&self, mut f: F) -> Result<(), ShadowError>
+    /// Provides zero-copy read access via ROSlice without marking clean.
+    pub fn with_ro_slice<F, R>(&self, addr: u16, len: usize, f: F) -> Result<R, ShadowError>
     where
-        F: FnMut(u16, &[u8]) -> Result<(), ShadowError>,
+        F: FnOnce(ROSlice<'_>) -> R,
     {
-        self.table.for_each_dirty_block(|addr, data| f(addr, data))
+        self.table
+            .with_bytes(addr, len, |data| Ok(f(ROSlice::new(data))))
+    }
+
+    /// Provides zero-copy read-write access via RWSlice without marking dirty.
+    pub fn with_rw_slice<F, R>(&mut self, addr: u16, len: usize, f: F) -> Result<R, ShadowError>
+    where
+        F: FnOnce(RWSlice<'_>) -> R,
+    {
+        self.table
+            .with_bytes_mut(addr, len, |data| Ok(f(RWSlice::new(data))))
+    }
+
+    /// Iterates over each dirty block, providing its address and data as ROSlice.
+    pub fn iter_dirty<F>(&self, mut f: F) -> Result<(), ShadowError>
+    where
+        F: FnMut(u16, ROSlice<'_>) -> Result<(), ShadowError>,
+    {
+        self.table
+            .iter_dirty(|addr, data| f(addr, ROSlice::new(data)))
+    }
+
+    /// Marks all blocks overlapping the given range as clean.
+    pub fn mark_clean(&mut self, addr: u16, len: usize) -> Result<(), ShadowError> {
+        self.table.mark_clean(addr, len)
     }
 
     /// Returns true if any block overlapping the given range is dirty.
@@ -72,8 +87,7 @@ mod tests {
         let mut table = TestTable::new();
         let view = KernelView::new(&mut table);
 
-        let mut buf = [0u8; 4];
-        view.read_range(0, &mut buf).unwrap();
+        view.with_ro_slice(0, 4, |_slice| {}).unwrap();
 
         assert!(!view.any_dirty());
     }
@@ -83,14 +97,20 @@ mod tests {
         let mut table = TestTable::new();
         let mut view = KernelView::new(&mut table);
 
-        view.write_range(0, &[0xFF; 4]).unwrap();
+        view.with_rw_slice(0, 4, |mut slice| {
+            slice.copy_from_slice(&[0xFF; 4]);
+        })
+        .unwrap();
 
         assert!(!view.any_dirty());
 
         // Verify data was actually written
-        let mut buf = [0u8; 4];
-        view.read_range(0, &mut buf).unwrap();
-        assert_eq!(buf, [0xFF; 4]);
+        view.with_ro_slice(0, 4, |slice| {
+            let mut buf = [0u8; 4];
+            slice.copy_to_slice(&mut buf);
+            assert_eq!(buf, [0xFF; 4]);
+        })
+        .unwrap();
     }
 
     #[test]
@@ -109,7 +129,7 @@ mod tests {
     }
 
     #[test]
-    fn for_each_dirty_block_iterates_only_dirty() {
+    fn iter_dirty_iterates_only_dirty() {
         let mut table = TestTable::new();
         // Mark only block 0 (bytes 0-15) and block 2 (bytes 32-47) dirty
         table.mark_dirty(0, 16).unwrap();
@@ -119,7 +139,7 @@ mod tests {
 
         let mut count = 0;
         let mut addrs = [0u16; 4];
-        view.for_each_dirty_block(|addr, _data| {
+        view.iter_dirty(|addr, _data| {
             addrs[count] = addr;
             count += 1;
             Ok(())
@@ -132,17 +152,25 @@ mod tests {
     }
 
     #[test]
-    fn for_each_dirty_block_provides_correct_data() {
+    fn iter_dirty_provides_correct_data() {
         let mut table = TestTable::new();
-        table.write_range(0, &[0xAA; 16]).unwrap();
+        table
+            .with_bytes_mut(0, 16, |buf| {
+                buf.copy_from_slice(&[0xAA; 16]);
+                Ok(())
+            })
+            .unwrap();
         table.mark_dirty(0, 16).unwrap();
 
         let view = KernelView::new(&mut table);
 
-        view.for_each_dirty_block(|addr, data| {
+        view.iter_dirty(|addr, slice| {
             assert_eq!(addr, 0);
-            assert_eq!(data.len(), 16);
-            assert!(data.iter().all(|&b| b == 0xAA));
+            assert_eq!(slice.len(), 16);
+            // Check data using ROSlice primitives
+            for i in 0..16 {
+                assert_eq!(slice.read_u8_at(i), 0xAA);
+            }
             Ok(())
         })
         .unwrap();
@@ -167,14 +195,42 @@ mod tests {
     }
 
     #[test]
-    fn any_dirty_returns_false_after_clear() {
+    fn mark_clean_partial_block_clears_whole_block() {
         let mut table = TestTable::new();
-        table.mark_dirty(0, 64).unwrap(); // Mark all blocks
+        // Mark block 0 (bytes 0-15) dirty
+        table.mark_dirty(0, 16).unwrap();
 
         let mut view = KernelView::new(&mut table);
-        assert!(view.any_dirty());
 
-        view.clear_dirty();
-        assert!(!view.any_dirty());
+        // Mark clean with partial range (addr=5, len=1) should clear entire block 0
+        view.mark_clean(5, 1).unwrap();
+
+        // Entire block 0 should be clean now
+        assert!(!view.is_dirty(0, 16).unwrap());
+    }
+
+    #[test]
+    fn iter_dirty_stops_on_first_error() {
+        let mut table = TestTable::new();
+        // Mark 3 blocks dirty
+        table.mark_dirty(0, 16).unwrap();
+        table.mark_dirty(16, 16).unwrap();
+        table.mark_dirty(32, 16).unwrap();
+
+        let view = KernelView::new(&mut table);
+
+        let mut count = 0;
+        let result = view.iter_dirty(|_addr, _data| {
+            count += 1;
+            if count == 2 {
+                Err(ShadowError::OutOfBounds) // Simulate error on second block
+            } else {
+                Ok(())
+            }
+        });
+
+        // Should have stopped on error and propagated it
+        assert!(result.is_err());
+        assert_eq!(count, 2); // Only processed 2 blocks before error
     }
 }

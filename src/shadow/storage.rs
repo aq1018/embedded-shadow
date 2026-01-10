@@ -119,7 +119,12 @@ where
         f: impl FnOnce(&mut WriteFn) -> Result<(), ShadowError>,
     ) -> Result<(), ShadowError> {
         let table = unsafe { &mut *self.table.get() };
-        let mut write = |addr: u16, data: &[u8]| table.write_range(addr, data);
+        let mut write = |addr: u16, data: &[u8]| {
+            table.with_bytes_mut(addr, data.len(), |buf| {
+                buf.copy_from_slice(data);
+                Ok(())
+            })
+        };
         f(&mut write)
     }
 
@@ -155,12 +160,19 @@ mod tests {
 
         // Verify data was written
         storage.host_shadow().with_view(|view| {
-            let mut buf = [0u8; 4];
-            view.read_range(0, &mut buf).unwrap();
-            assert_eq!(buf, [0x11, 0x22, 0x33, 0x44]);
+            view.with_ro_slice(0, 4, |slice| {
+                let mut buf = [0u8; 4];
+                slice.copy_to_slice(&mut buf);
+                assert_eq!(buf, [0x11, 0x22, 0x33, 0x44]);
+            })
+            .unwrap();
 
-            view.read_range(32, &mut buf).unwrap();
-            assert_eq!(buf, [0xAA, 0xBB, 0xCC, 0xDD]);
+            view.with_ro_slice(32, 4, |slice| {
+                let mut buf = [0u8; 4];
+                slice.copy_to_slice(&mut buf);
+                assert_eq!(buf, [0xAA, 0xBB, 0xCC, 0xDD]);
+            })
+            .unwrap();
         });
 
         // Verify no dirty flags
@@ -187,9 +199,12 @@ mod tests {
         storage.host_shadow().with_view(|view| {
             for i in 0..4 {
                 let addr = i * 16;
-                let mut buf = [0u8; 4];
-                view.read_range(addr, &mut buf).unwrap();
-                assert_eq!(buf, [i as u8; 4]);
+                view.with_ro_slice(addr, 4, |slice| {
+                    let mut buf = [0u8; 4];
+                    slice.copy_to_slice(&mut buf);
+                    assert_eq!(buf, [i as u8; 4]);
+                })
+                .unwrap();
             }
         });
     }
@@ -221,13 +236,83 @@ mod tests {
 
         // Now do a normal write
         storage.host_shadow().with_view(|view| {
-            view.write_range(0, &[0xAA, 0xBB, 0xCC, 0xDD]).unwrap();
+            view.with_wo_slice(0, 4, |mut slice| {
+                slice.copy_from_slice(&[0xAA, 0xBB, 0xCC, 0xDD]);
+                (true, ())
+            })
+            .unwrap();
         });
 
         // Should be dirty now
         storage.kernel_shadow().with_view(|view| {
             assert!(view.any_dirty());
             assert!(view.is_dirty(0, 4).unwrap());
+        });
+    }
+
+    #[test]
+    fn full_host_kernel_sync_cycle() {
+        let storage = test_storage();
+
+        // 1. Host writes to addr 0 and 32 -> marks dirty
+        storage.host_shadow().with_view(|view| {
+            view.with_wo_slice(0, 4, |mut slice| {
+                slice.copy_from_slice(&[0x11, 0x22, 0x33, 0x44]);
+                (true, ())
+            })
+            .unwrap();
+            view.with_wo_slice(32, 4, |mut slice| {
+                slice.copy_from_slice(&[0xAA, 0xBB, 0xCC, 0xDD]);
+                (true, ())
+            })
+            .unwrap();
+        });
+
+        // 2. Kernel iter_dirty sees both blocks
+        storage.kernel_shadow().with_view(|view| {
+            let mut dirty_addrs = [0u16; 4];
+            let mut count = 0;
+            view.iter_dirty(|addr, _data| {
+                dirty_addrs[count] = addr;
+                count += 1;
+                Ok(())
+            })
+            .unwrap();
+            assert_eq!(count, 2);
+            assert_eq!(dirty_addrs[0], 0);
+            assert_eq!(dirty_addrs[1], 32);
+        });
+
+        // 3. Kernel clears block 0 only
+        storage.kernel_shadow().with_view(|view| {
+            view.mark_clean(0, 16).unwrap();
+        });
+
+        // 4. Host writes to addr 48
+        storage.host_shadow().with_view(|view| {
+            view.with_wo_slice(48, 4, |mut slice| {
+                slice.copy_from_slice(&[0xFF, 0xFF, 0xFF, 0xFF]);
+                (true, ())
+            })
+            .unwrap();
+        });
+
+        // 5. Kernel iter_dirty sees blocks 2 (addr 32) and 3 (addr 48), but not 0
+        storage.kernel_shadow().with_view(|view| {
+            let mut dirty_addrs = [0u16; 4];
+            let mut count = 0;
+            view.iter_dirty(|addr, _data| {
+                dirty_addrs[count] = addr;
+                count += 1;
+                Ok(())
+            })
+            .unwrap();
+            assert_eq!(count, 2);
+            assert_eq!(dirty_addrs[0], 32);
+            assert_eq!(dirty_addrs[1], 48);
+
+            // Verify block 0 is NOT dirty
+            assert!(!view.is_dirty(0, 16).unwrap());
         });
     }
 }

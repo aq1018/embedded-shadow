@@ -31,16 +31,16 @@ A `no_std`, no-alloc shadow register table for embedded systems with dirty track
 The shadow registry uses a **one-way dirty tracking model**:
 
 ```text
-┌──────────────────┐         ┌──────────────────────────┐
-│   Host (App)     │         │   Kernel (HW)            │
-│                  │         │                          │
-│  write_range()   │────────▶│  for_each_dirty_block()  │
-│  (marks dirty)   │  dirty  │  (reads dirty)           │
-│                  │  bits   │                          │
-│                  │◀────────│  clear_dirty()           │
-│                  │  reset  │  write_range()           │
-│                  │         │  (no dirty mark)         │
-└──────────────────┘         └──────────────────────────┘
+┌──────────────────┐         ┌────────────────────┐
+│   Host (App)     │         │   Kernel (HW)      │
+│                  │         │                    │
+│  with_wo_slice() │────────▶│  iter_dirty()      │
+│  (marks dirty)   │  dirty  │  (reads dirty)     │
+│                  │  bits   │                    │
+│                  │◀────────│  clear_dirty()     │
+│                  │  reset  │  with_rw_slice()   │
+│                  │         │  (no dirty mark)   │
+└──────────────────┘         └────────────────────┘
 ```
 
 - **Host writes** mark blocks as dirty and may trigger persistence
@@ -64,37 +64,25 @@ let storage = ShadowStorageBuilder::new()
     .no_persist()
     .build();
 
-// Load factory defaults at boot (doesn't mark dirty)
-storage.load_defaults(|write| {
-    write(0x000, &[0x01, 0x02, 0x03, 0x04])?;
-    write(0x100, &[0xAA, 0xBB, 0xCC, 0xDD])?;
-    Ok(())
-}).unwrap();
-
-// host_shadow() and kernel_shadow() return short-lived references,
-// typically constructed each iteration and passed via context, e.g.:
-//   fn update(ctx: &mut HostContext) { ctx.shadow.with_view(|view| { ... }); }
-//   fn run_once(ctx: &mut KernelContext) { ctx.shadow.with_view_unchecked(|view| { ... }); }
-
-// Host side (main loop): use with_view for critical section safety
+// Host side: write structured data using typed slice primitives
 storage.host_shadow().with_view(|view| {
-    // Handle errors explicitly with match
-    match view.write_range(0x100, &[0xDE, 0xAD, 0xBE, 0xEF]) {
-        Ok(()) => {}
-        Err(ShadowError::Denied) => { /* handle access denied */ }
-        Err(ShadowError::OutOfBounds) => { /* handle invalid range */ }
-        Err(e) => panic!("unexpected error: {:?}", e),
-    }
-
-    let mut buf = [0u8; 4];
-    view.read_range(0x100, &mut buf).unwrap();
+    // Write a config register: flags (u16) | timeout_ms (u16)
+    view.with_wo_slice(0x100, 4, |mut slice| {
+        slice.write_u16_le_at(0, 0x001F);  // flags
+        slice.write_u16_le_at(2, 5000);    // timeout_ms
+        (true, ()) // mark dirty
+    }).unwrap();
 });
 
-// Kernel side (ISR): use with_view_unchecked since ISR already has exclusive access
+// Kernel side (ISR): sync dirty blocks to hardware
 unsafe {
     storage.kernel_shadow().with_view_unchecked(|view| {
-        view.for_each_dirty_block(|addr, data| {
-            // Write to hardware registers here
+        view.iter_dirty(|addr, slice| {
+            // Read typed values from the slice
+            let flags = slice.read_u16_le_at(0);
+            let timeout = slice.read_u16_le_at(2);
+            // Write to hardware registers here...
+            let _ = (flags, timeout);
             Ok(())
         }).unwrap();
         view.clear_dirty();
@@ -117,15 +105,15 @@ Common patterns:
 
 There's no universal "best" size—choose based on your access patterns and memory constraints.
 
-## Examples
+## Documentation
 
-See the [examples](examples/) directory for detailed usage:
-
-- [`basic.rs`](examples/basic.rs) - Core concepts and dirty tracking
-- [`staging.rs`](examples/staging.rs) - Transactional writes with preview/commit/rollback
-- [`access_policy.rs`](examples/access_policy.rs) - Memory protection and access control
-- [`persist.rs`](examples/persist.rs) - Flash persistence patterns
-- [`complex.rs`](examples/complex.rs) - Real-world motor controller simulation
+- **[API Reference](https://docs.rs/embedded-shadow)** - Full API documentation
+- **[Examples](examples/)** - Detailed usage patterns:
+  - [`basic.rs`](examples/basic.rs) - Core concepts and dirty tracking
+  - [`staging.rs`](examples/staging.rs) - Transactional writes with preview/commit/rollback
+  - [`access_policy.rs`](examples/access_policy.rs) - Memory protection and access control
+  - [`persist.rs`](examples/persist.rs) - Flash persistence patterns
+  - [`complex.rs`](examples/complex.rs) - Real-world motor controller simulation
 
 ## Critical Section
 
