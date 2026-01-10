@@ -119,7 +119,7 @@ impl<const DC: usize, const EC: usize> StagingBuffer for PatchStagingBuffer<DC, 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_support::TestStage;
+    use crate::shadow::test_support::TestStage;
 
     #[test]
     fn write_staged_accumulates_entries() {

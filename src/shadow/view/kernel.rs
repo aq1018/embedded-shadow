@@ -65,7 +65,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_support::TestTable;
+    use crate::shadow::test_support::TestTable;
 
     #[test]
     fn kernel_read_does_not_mark_dirty() {

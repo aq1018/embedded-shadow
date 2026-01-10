@@ -94,7 +94,7 @@ mod tests {
     use super::*;
     use crate::persist::NoPersist;
     use crate::policy::{AllowAllPolicy, NoPersistPolicy};
-    use crate::test_support::{DenyAllPolicy, ReadOnlyBelow32, TestTable};
+    use crate::shadow::test_support::{DenyAllPolicy, ReadOnlyBelow32, TestTable};
 
     #[test]
     fn host_write_marks_dirty() {

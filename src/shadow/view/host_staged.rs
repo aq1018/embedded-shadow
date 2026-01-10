@@ -102,8 +102,8 @@ mod tests {
     use crate::ShadowError;
     use crate::persist::NoPersist;
     use crate::policy::{AllowAllPolicy, NoPersistPolicy};
+    use crate::shadow::test_support::{DenyAllPolicy, TestTable};
     use crate::staged::PatchStagingBuffer;
-    use crate::test_support::{DenyAllPolicy, TestTable};
     use crate::view::HostView;
 
     use super::*;

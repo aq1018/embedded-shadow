@@ -141,7 +141,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::test_support::test_storage;
+    use crate::shadow::test_support::test_storage;
 
     #[test]
     fn load_defaults_writes_data_without_marking_dirty() {
