@@ -1,6 +1,9 @@
 use heapless::Vec;
 
-use crate::shadow::{ShadowError, types::StagingBuffer};
+use crate::shadow::{
+    ShadowError,
+    types::{StagingBuffer, WriteResult},
+};
 
 #[derive(Clone, Copy)]
 struct StagedWrite {
@@ -52,8 +55,8 @@ impl<const DC: usize, const EC: usize> StagingBuffer for PatchStagingBuffer<DC, 
         &mut self,
         addr: u16,
         len: usize,
-        f: impl FnOnce(&mut [u8]) -> bool,
-    ) -> Result<bool, ShadowError> {
+        f: impl FnOnce(&mut [u8]) -> WriteResult<()>,
+    ) -> Result<WriteResult<()>, ShadowError> {
         let off = self.data.len();
 
         // Pre-allocate space (zero-filled)
@@ -61,10 +64,10 @@ impl<const DC: usize, const EC: usize> StagingBuffer for PatchStagingBuffer<DC, 
             .resize(off + len, 0)
             .map_err(|_| ShadowError::StageFull)?;
 
-        // Call user callback - returns true to commit the write
-        let written = f(&mut self.data[off..off + len]);
+        // Call user callback - returns WriteResult::Dirty to commit the write
+        let result = f(&mut self.data[off..off + len]);
 
-        if written {
+        if result.is_dirty() {
             // Record the entry
             self.entries
                 .push(StagedWrite {
@@ -78,7 +81,7 @@ impl<const DC: usize, const EC: usize> StagingBuffer for PatchStagingBuffer<DC, 
             self.data.truncate(off);
         }
 
-        Ok(written)
+        Ok(result)
     }
 
     fn clear_staged(&mut self) -> Result<(), ShadowError> {
@@ -161,14 +164,14 @@ mod tests {
     fn with_staged_write_commits_when_marked() {
         let mut stage = TestStage::new();
 
-        let written = stage
+        let result = stage
             .alloc_staged(10, 4, |data| {
                 data.copy_from_slice(&[0xAA, 0xBB, 0xCC, 0xDD]);
-                true
+                WriteResult::Dirty(())
             })
             .unwrap();
 
-        assert!(written);
+        assert!(result.is_dirty());
         assert!(stage.any_staged());
 
         // Verify via iter_staged
@@ -188,14 +191,14 @@ mod tests {
     fn with_staged_write_reclaims_space_when_not_marked() {
         let mut stage = TestStage::new();
 
-        let written = stage
+        let result = stage
             .alloc_staged(10, 4, |data| {
                 data.copy_from_slice(&[0xAA, 0xBB, 0xCC, 0xDD]);
-                false // Don't commit the write
+                WriteResult::Clean(()) // Don't commit the write
             })
             .unwrap();
 
-        assert!(!written);
+        assert!(!result.is_dirty());
         assert!(!stage.any_staged());
     }
 }

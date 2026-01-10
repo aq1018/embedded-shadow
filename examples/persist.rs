@@ -172,26 +172,26 @@ fn example_flash_sectors() {
         // Small writes accumulate
         view.with_wo_slice(0x100, 32, |mut slice| {
             slice.fill(0x01);
-            (true, ())
+            WriteResult::Dirty(())
         })
         .unwrap(); // Sector 0
 
         view.with_wo_slice(0x200, 32, |mut slice| {
             slice.fill(0x02);
-            (true, ())
+            WriteResult::Dirty(())
         })
         .unwrap(); // Sector 0
 
         view.with_wo_slice(0x300, 32, |mut slice| {
             slice.fill(0x03);
-            (true, ())
+            WriteResult::Dirty(())
         })
         .unwrap(); // Sector 0
 
         // Fourth write triggers batch persistence
         view.with_wo_slice(0x1000, 32, |mut slice| {
             slice.fill(0x04);
-            (true, ())
+            WriteResult::Dirty(())
         })
         .unwrap(); // Sector 1
         // BatchedFlashTrigger would now persist sectors 0 and 1
@@ -199,7 +199,7 @@ fn example_flash_sectors() {
         // Write to another sector
         view.with_wo_slice(0x2000, 32, |mut slice| {
             slice.fill(0x05);
-            (true, ())
+            WriteResult::Dirty(())
         })
         .unwrap(); // Sector 2
         // Not persisted yet, waiting for more writes
@@ -222,7 +222,7 @@ fn example_critical_registers() {
         // Write to critical register - persists immediately
         view.with_wo_slice(0x10, 4, |mut slice| {
             slice.fill(0xFF);
-            (true, ())
+            WriteResult::Dirty(())
         })
         .unwrap();
         // ImmediatePersistTrigger executes right away
@@ -230,7 +230,7 @@ fn example_critical_registers() {
         // Write to non-critical area - not persisted
         view.with_wo_slice(0x80, 4, |mut slice| {
             slice.fill(0xAA);
-            (true, ())
+            WriteResult::Dirty(())
         })
         .unwrap();
         // No persistence triggered
@@ -238,7 +238,7 @@ fn example_critical_registers() {
         // Another critical write - persists immediately
         view.with_wo_slice(0x00, 2, |mut slice| {
             slice.copy_from_slice(&[0x12, 0x34]);
-            (true, ())
+            WriteResult::Dirty(())
         })
         .unwrap();
         // ImmediatePersistTrigger executes again
@@ -328,21 +328,21 @@ fn example_selective_persistence() {
         // Write to config area - will persist
         view.with_wo_slice(0x050, 8, |mut slice| {
             slice.fill(0x11);
-            (true, ())
+            WriteResult::Dirty(())
         })
         .unwrap(); // boot_config
 
         // Write to data area - won't persist
         view.with_wo_slice(0x300, 8, |mut slice| {
             slice.fill(0x22);
-            (true, ())
+            WriteResult::Dirty(())
         })
         .unwrap(); // Not config
 
         // Write to different config - will persist separately
         view.with_wo_slice(0x150, 8, |mut slice| {
             slice.fill(0x33);
-            (true, ())
+            WriteResult::Dirty(())
         })
         .unwrap(); // app_config
 

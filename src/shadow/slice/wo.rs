@@ -52,4 +52,18 @@ mod tests {
         WOSlice::new(&mut data).write_u32_be_at(0, 0x12345678);
         assert_eq!(data, [0x12, 0x34, 0x56, 0x78]);
     }
+
+    #[test]
+    #[should_panic(expected = "write out of bounds")]
+    fn wo_slice_write_u32_out_of_bounds() {
+        let mut data = [0u8; 4];
+        WOSlice::new(&mut data).write_u32_le_at(1, 0x12345678); // offset 1 + size 4 > len 4
+    }
+
+    #[test]
+    #[should_panic(expected = "write out of bounds")]
+    fn wo_slice_write_u16_out_of_bounds() {
+        let mut data = [0u8; 2];
+        WOSlice::new(&mut data).write_u16_le_at(1, 0x1234); // offset 1 + size 2 > len 2
+    }
 }

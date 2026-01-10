@@ -76,7 +76,7 @@ where
         !self.dirty.is_empty()
     }
 
-    pub(crate) fn clear_dirty(&mut self) {
+    pub(crate) fn clear_all_dirty(&mut self) {
         self.dirty = bitmaps::Bitmap::new();
     }
 
@@ -84,7 +84,7 @@ where
         self.apply_dirty_range(addr, len, true)
     }
 
-    pub(crate) fn mark_clean(&mut self, addr: u16, len: usize) -> Result<(), ShadowError> {
+    pub(crate) fn clear_dirty(&mut self, addr: u16, len: usize) -> Result<(), ShadowError> {
         self.apply_dirty_range(addr, len, false)
     }
 

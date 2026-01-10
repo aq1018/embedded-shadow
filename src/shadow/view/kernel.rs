@@ -66,9 +66,9 @@ where
             .iter_dirty(|addr, data| f(addr, ROSlice::new(data)))
     }
 
-    /// Marks all blocks overlapping the given range as clean.
-    pub fn mark_clean(&mut self, addr: u16, len: usize) -> Result<(), ShadowError> {
-        self.table.mark_clean(addr, len)
+    /// Clears dirty flags for all blocks overlapping the given range.
+    pub fn clear_dirty(&mut self, addr: u16, len: usize) -> Result<(), ShadowError> {
+        self.table.clear_dirty(addr, len)
     }
 
     /// Returns true if any block overlapping the given range is dirty.
@@ -82,8 +82,8 @@ where
     }
 
     /// Clears all dirty flags in the table.
-    pub fn clear_dirty(&mut self) {
-        self.table.clear_dirty()
+    pub fn clear_all_dirty(&mut self) {
+        self.table.clear_all_dirty()
     }
 }
 
@@ -124,7 +124,7 @@ mod tests {
     }
 
     #[test]
-    fn kernel_clear_dirty_clears_all_blocks() {
+    fn kernel_clear_all_dirty_clears_all_blocks() {
         let mut table = TestTable::new();
         // Manually mark some blocks dirty
         table.mark_dirty(0, 16).unwrap();
@@ -133,7 +133,7 @@ mod tests {
         let mut view = KernelView::new(&mut table);
         assert!(view.any_dirty());
 
-        view.clear_dirty();
+        view.clear_all_dirty();
 
         assert!(!view.any_dirty());
     }
@@ -205,15 +205,15 @@ mod tests {
     }
 
     #[test]
-    fn mark_clean_partial_block_clears_whole_block() {
+    fn clear_dirty_partial_block_clears_whole_block() {
         let mut table = TestTable::new();
         // Mark block 0 (bytes 0-15) dirty
         table.mark_dirty(0, 16).unwrap();
 
         let mut view = KernelView::new(&mut table);
 
-        // Mark clean with partial range (addr=5, len=1) should clear entire block 0
-        view.mark_clean(5, 1).unwrap();
+        // Clear dirty with partial range (addr=5, len=1) should clear entire block 0
+        view.clear_dirty(5, 1).unwrap();
 
         // Entire block 0 should be clean now
         assert!(!view.is_dirty(0, 16).unwrap());

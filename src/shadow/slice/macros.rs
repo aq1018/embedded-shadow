@@ -3,6 +3,9 @@ macro_rules! impl_read_primitive {
     // Single byte types - no endianness suffix
     (u8) => {
         /// Reads a `u8` at the given offset.
+        ///
+        /// # Panics
+        /// Panics if `offset >= len()`.
         #[inline]
         pub fn read_u8_at(&self, offset: usize) -> u8 {
             self.0[offset]
@@ -10,6 +13,9 @@ macro_rules! impl_read_primitive {
     };
     (i8) => {
         /// Reads an `i8` at the given offset.
+        ///
+        /// # Panics
+        /// Panics if `offset >= len()`.
         #[inline]
         pub fn read_i8_at(&self, offset: usize) -> i8 {
             self.0[offset] as i8
@@ -19,14 +25,30 @@ macro_rules! impl_read_primitive {
     ($type:ty, $size:literal) => {
         paste::paste! {
             #[doc = "Reads a little-endian `" $type "` at the given offset."]
+            #[doc = ""]
+            #[doc = "# Panics"]
+            #[doc = "Panics if `offset + " $size " > len()`."]
             #[inline]
             pub fn [<read_ $type _le_at>](&self, offset: usize) -> $type {
+                assert!(
+                    offset + $size <= self.0.len(),
+                    "read out of bounds: offset {} + size {} > len {}",
+                    offset, $size, self.0.len()
+                );
                 <$type>::from_le_bytes(self.0[offset..offset + $size].try_into().unwrap())
             }
 
             #[doc = "Reads a big-endian `" $type "` at the given offset."]
+            #[doc = ""]
+            #[doc = "# Panics"]
+            #[doc = "Panics if `offset + " $size " > len()`."]
             #[inline]
             pub fn [<read_ $type _be_at>](&self, offset: usize) -> $type {
+                assert!(
+                    offset + $size <= self.0.len(),
+                    "read out of bounds: offset {} + size {} > len {}",
+                    offset, $size, self.0.len()
+                );
                 <$type>::from_be_bytes(self.0[offset..offset + $size].try_into().unwrap())
             }
         }
@@ -50,6 +72,9 @@ macro_rules! impl_write_primitive {
     // Single byte types - no endianness suffix
     (u8) => {
         /// Writes a `u8` at the given offset.
+        ///
+        /// # Panics
+        /// Panics if `offset >= len()`.
         #[inline]
         pub fn write_u8_at(&mut self, offset: usize, value: u8) {
             self.0[offset] = value;
@@ -57,6 +82,9 @@ macro_rules! impl_write_primitive {
     };
     (i8) => {
         /// Writes an `i8` at the given offset.
+        ///
+        /// # Panics
+        /// Panics if `offset >= len()`.
         #[inline]
         pub fn write_i8_at(&mut self, offset: usize, value: i8) {
             self.0[offset] = value as u8;
@@ -66,14 +94,30 @@ macro_rules! impl_write_primitive {
     ($type:ty, $size:literal) => {
         paste::paste! {
             #[doc = "Writes a little-endian `" $type "` at the given offset."]
+            #[doc = ""]
+            #[doc = "# Panics"]
+            #[doc = "Panics if `offset + " $size " > len()`."]
             #[inline]
             pub fn [<write_ $type _le_at>](&mut self, offset: usize, value: $type) {
+                assert!(
+                    offset + $size <= self.0.len(),
+                    "write out of bounds: offset {} + size {} > len {}",
+                    offset, $size, self.0.len()
+                );
                 self.0[offset..offset + $size].copy_from_slice(&value.to_le_bytes());
             }
 
             #[doc = "Writes a big-endian `" $type "` at the given offset."]
+            #[doc = ""]
+            #[doc = "# Panics"]
+            #[doc = "Panics if `offset + " $size " > len()`."]
             #[inline]
             pub fn [<write_ $type _be_at>](&mut self, offset: usize, value: $type) {
+                assert!(
+                    offset + $size <= self.0.len(),
+                    "write out of bounds: offset {} + size {} > len {}",
+                    offset, $size, self.0.len()
+                );
                 self.0[offset..offset + $size].copy_from_slice(&value.to_be_bytes());
             }
         }

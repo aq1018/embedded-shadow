@@ -144,7 +144,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::shadow::test_support::test_storage;
+    use crate::shadow::{WriteResult, test_support::test_storage};
 
     #[test]
     fn load_defaults_writes_data_without_marking_dirty() {
@@ -238,7 +238,7 @@ mod tests {
         storage.host_shadow().with_view(|view| {
             view.with_wo_slice(0, 4, |mut slice| {
                 slice.copy_from_slice(&[0xAA, 0xBB, 0xCC, 0xDD]);
-                (true, ())
+                WriteResult::Dirty(())
             })
             .unwrap();
         });
@@ -258,12 +258,12 @@ mod tests {
         storage.host_shadow().with_view(|view| {
             view.with_wo_slice(0, 4, |mut slice| {
                 slice.copy_from_slice(&[0x11, 0x22, 0x33, 0x44]);
-                (true, ())
+                WriteResult::Dirty(())
             })
             .unwrap();
             view.with_wo_slice(32, 4, |mut slice| {
                 slice.copy_from_slice(&[0xAA, 0xBB, 0xCC, 0xDD]);
-                (true, ())
+                WriteResult::Dirty(())
             })
             .unwrap();
         });
@@ -285,14 +285,14 @@ mod tests {
 
         // 3. Kernel clears block 0 only
         storage.kernel_shadow().with_view(|view| {
-            view.mark_clean(0, 16).unwrap();
+            view.clear_dirty(0, 16).unwrap();
         });
 
         // 4. Host writes to addr 48
         storage.host_shadow().with_view(|view| {
             view.with_wo_slice(48, 4, |mut slice| {
                 slice.copy_from_slice(&[0xFF, 0xFF, 0xFF, 0xFF]);
-                (true, ())
+                WriteResult::Dirty(())
             })
             .unwrap();
         });

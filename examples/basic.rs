@@ -49,7 +49,7 @@ pub fn main() {
         view.with_wo_slice(CONFIG_ADDR, CONFIG_SIZE, |mut slice| {
             slice.write_u16_le_at(0, 0x001F); // flags: enable all features
             slice.write_u16_le_at(2, 5000); // timeout: 5000ms
-            (true, ())
+            WriteResult::Dirty(())
         })
         .unwrap();
 
@@ -60,7 +60,7 @@ pub fn main() {
             slice.write_u16_le_at(1, 1500); // speed: 1500 RPM
             slice.write_u8_at(3, 0x01); // direction: forward
             slice.write_u32_le_at(4, 0); // position: 0
-            (true, ())
+            WriteResult::Dirty(())
         })
         .unwrap();
 
@@ -123,7 +123,7 @@ pub fn main() {
         assert_eq!(blocks_processed, 2, "Should process 2 dirty blocks");
 
         // After syncing to hardware, clear the dirty flags
-        view.clear_dirty();
+        view.clear_all_dirty();
 
         // Verify nothing is dirty anymore
         assert!(!view.any_dirty());
@@ -140,7 +140,7 @@ pub fn main() {
                 slice.write_u32_le_at(0, 0xDEADBEEF); // status code
                 slice.write_u16_le_at(4, 42); // sequence number
                 slice.write_u16_le_at(6, 0x8000); // flags
-                (true, ())
+                WriteResult::Dirty(())
             })
             .unwrap();
         });

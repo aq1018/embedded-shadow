@@ -41,4 +41,20 @@ mod tests {
         assert_eq!(slice.read_u32_be_at(0), 0x78563412);
         assert_eq!(slice.read_u8_at(0), 0x78);
     }
+
+    #[test]
+    #[should_panic(expected = "read out of bounds")]
+    fn ro_slice_read_u32_out_of_bounds() {
+        let data = [0u8; 4];
+        let slice = ROSlice::new(&data);
+        slice.read_u32_le_at(1); // offset 1 + size 4 > len 4
+    }
+
+    #[test]
+    #[should_panic(expected = "read out of bounds")]
+    fn ro_slice_read_u16_out_of_bounds() {
+        let data = [0u8; 2];
+        let slice = ROSlice::new(&data);
+        slice.read_u16_le_at(1); // offset 1 + size 2 > len 2
+    }
 }

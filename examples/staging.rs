@@ -49,7 +49,7 @@ pub fn main() {
             slice.write_u16_le_at(2, 50); // i_gain
             slice.write_u16_le_at(4, 25); // d_gain
             slice.write_u16_le_at(6, 1000); // output_limit
-            (true, ())
+            WriteResult::Dirty(())
         })
         .unwrap();
 
@@ -59,7 +59,7 @@ pub fn main() {
             slice.write_u16_le_at(2, 100); // new i_gain
             slice.write_u16_le_at(4, 50); // new d_gain
             slice.write_u16_le_at(6, 2000); // new output_limit
-            (true, ())
+            WriteResult::Dirty(())
         })
         .unwrap();
 
@@ -92,7 +92,7 @@ pub fn main() {
             slice.write_u16_le_at(2, 1000); // scale
             slice.write_i16_le_at(4, -100); // min_value
             slice.write_i16_le_at(6, 500); // max_value
-            (true, ())
+            WriteResult::Dirty(())
         })
         .unwrap();
 
@@ -122,7 +122,7 @@ pub fn main() {
             slice.write_u16_le_at(2, 256); // scale (1.0 in Q8)
             slice.write_i16_le_at(4, 0); // min_value
             slice.write_i16_le_at(6, 100); // max_value
-            (true, ())
+            WriteResult::Dirty(())
         })
         .unwrap();
 
@@ -132,7 +132,7 @@ pub fn main() {
             slice.write_u16_le_at(2, 512); // scale (2.0 in Q8)
             slice.write_i16_le_at(4, -50); // min_value
             slice.write_i16_le_at(6, 200); // max_value
-            (true, ())
+            WriteResult::Dirty(())
         })
         .unwrap();
 
@@ -140,7 +140,7 @@ pub fn main() {
         view.alloc_staged(SENSOR_CAL_ADDR + 4, 4, |mut slice| {
             slice.write_i16_le_at(0, -100); // override min_value
             slice.write_i16_le_at(2, 500); // override max_value
-            (true, ())
+            WriteResult::Dirty(())
         })
         .unwrap();
 
@@ -168,7 +168,7 @@ pub fn main() {
 
             let result = view.alloc_staged(addr, 8, |mut slice| {
                 slice.fill((i + 1) as u8);
-                (true, ())
+                WriteResult::Dirty(())
             });
 
             match result {

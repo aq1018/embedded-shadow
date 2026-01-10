@@ -22,7 +22,7 @@ pub use policy::{AccessPolicy, AllowAllPolicy, NoPersistPolicy, PersistPolicy};
 pub use slice::{ROSlice, RWSlice, WOSlice};
 pub use staged::PatchStagingBuffer;
 pub use storage::{ShadowStorage, WriteFn};
-pub use types::StagingBuffer;
+pub use types::{StagingBuffer, WriteResult};
 pub use view::{HostView, HostViewStaged, KernelView};
 
 pub mod prelude {
@@ -30,5 +30,6 @@ pub mod prelude {
         AccessPolicy, AllowAllPolicy, HostShadow, HostView, HostViewStaged, KernelShadow,
         KernelView, NoPersist, NoPersistPolicy, PatchStagingBuffer, PersistPolicy, PersistTrigger,
         ROSlice, RWSlice, ShadowError, ShadowStorage, ShadowStorageBuilder, StagingBuffer, WOSlice,
+        WriteResult,
     };
 }

@@ -205,7 +205,7 @@ pub fn main() {
             slice.write_u16_le_at(6, 256); // pid_p: 1.0 (scaled)
             slice.write_u16_le_at(8, 512); // pid_i: 2.0 (scaled)
             slice.write_u16_le_at(10, 256); // pid_d: 1.0 (scaled)
-            (true, ())
+            WriteResult::Dirty(())
         })
         .unwrap();
 
@@ -215,7 +215,7 @@ pub fn main() {
             slice.write_u16_le_at(2, 0); // current_speed
             slice.write_i16_le_at(4, 0); // temperature
             slice.write_u32_le_at(6, 0); // error_count
-            (true, ())
+            WriteResult::Dirty(())
         })
         .unwrap();
     });
@@ -233,19 +233,19 @@ pub fn main() {
         // Stage new PID parameters using typed writes
         view.alloc_staged(0x206, 2, |mut slice| {
             slice.write_u16_le_at(0, 768); // New P: 3.0 (scaled by 256)
-            (true, ())
+            WriteResult::Dirty(())
         })
         .unwrap();
 
         view.alloc_staged(0x208, 2, |mut slice| {
             slice.write_u16_le_at(0, 1024); // New I: 4.0 (scaled by 256)
-            (true, ())
+            WriteResult::Dirty(())
         })
         .unwrap();
 
         view.alloc_staged(0x20A, 2, |mut slice| {
             slice.write_u16_le_at(0, 512); // New D: 2.0 (scaled by 256)
-            (true, ())
+            WriteResult::Dirty(())
         })
         .unwrap();
 
@@ -273,7 +273,7 @@ pub fn main() {
                 slice.write_u16_le_at(2, controller.current_speed);
                 slice.write_i16_le_at(4, controller.temperature);
                 slice.write_u32_le_at(6, controller.error_count);
-                (true, ())
+                WriteResult::Dirty(())
             })
             .unwrap();
 
@@ -284,7 +284,7 @@ pub fn main() {
                 slice.write_u16_le_at(0, controller.current_speed);
                 slice.write_i16_le_at(2, controller.temperature);
                 slice.write_u32_le_at(4, controller.error_count);
-                (true, ())
+                WriteResult::Dirty(())
             })
             .unwrap();
         });
@@ -306,7 +306,7 @@ pub fn main() {
                 })
                 .unwrap();
 
-                view.clear_dirty();
+                view.clear_all_dirty();
             }
         });
 
@@ -339,7 +339,7 @@ pub fn main() {
             slice.write_u16_le_at(0, 1023); // motor_constant
             slice.write_u16_le_at(2, 32); // offset
             slice.write_u16_le_at(4, 16); // scale_factor
-            (true, ())
+            WriteResult::Dirty(())
         })
         .unwrap();
         // This triggers immediate persistence due to calibration policy

@@ -101,7 +101,7 @@ fn example_bootloader_protection() {
         assert_eq!(
             view.with_wo_slice(0x00, 4, |mut slice| {
                 slice.fill(0xFF);
-                (true, ())
+                WriteResult::Dirty(())
             }),
             Err(ShadowError::Denied)
         );
@@ -109,7 +109,7 @@ fn example_bootloader_protection() {
             view.with_wo_slice(0xFF, 2, |mut slice| {
                 // Crosses into protected region
                 slice.fill(0xFF);
-                (true, ())
+                WriteResult::Dirty(())
             }),
             Err(ShadowError::Denied)
         );
@@ -118,7 +118,7 @@ fn example_bootloader_protection() {
         assert!(
             view.with_wo_slice(0x100, 4, |mut slice| {
                 slice.fill(0xAA);
-                (true, ())
+                WriteResult::Dirty(())
             })
             .is_ok()
         );
@@ -146,7 +146,7 @@ fn example_peripheral_access() {
         assert!(
             view.with_wo_slice(0x400, 4, |mut slice| {
                 slice.fill(0x55);
-                (true, ())
+                WriteResult::Dirty(())
             })
             .is_ok()
         );
@@ -156,7 +156,7 @@ fn example_peripheral_access() {
         assert!(
             view.with_wo_slice(0x500, 8, |mut slice| {
                 slice.fill(0xAA);
-                (true, ())
+                WriteResult::Dirty(())
             })
             .is_ok()
         );
@@ -165,7 +165,7 @@ fn example_peripheral_access() {
         assert!(
             view.with_wo_slice(0x600, 2, |mut slice| {
                 slice.copy_from_slice(&[0x01, 0x02]);
-                (true, ())
+                WriteResult::Dirty(())
             })
             .is_ok()
         );
@@ -174,7 +174,7 @@ fn example_peripheral_access() {
         assert_eq!(
             view.with_wo_slice(0x300, 4, |mut slice| {
                 slice.fill(0xFF);
-                (true, ())
+                WriteResult::Dirty(())
             }),
             Err(ShadowError::Denied)
         );
@@ -188,7 +188,7 @@ fn example_peripheral_access() {
             view.with_wo_slice(0x41E, 4, |mut slice| {
                 // Crosses UART boundary
                 slice.fill(0xFF);
-                (true, ())
+                WriteResult::Dirty(())
             }),
             Err(ShadowError::Denied)
         );
@@ -214,7 +214,7 @@ fn example_layered_security() {
         assert_eq!(
             view.with_wo_slice(0x00, 4, |mut slice| {
                 slice.fill(0xFF);
-                (true, ())
+                WriteResult::Dirty(())
             }),
             Err(ShadowError::Denied)
         );
@@ -223,7 +223,7 @@ fn example_layered_security() {
         assert_eq!(
             view.with_wo_slice(0x200, 4, |mut slice| {
                 slice.fill(0xFF);
-                (true, ())
+                WriteResult::Dirty(())
             }),
             Err(ShadowError::Denied)
         );
@@ -233,7 +233,7 @@ fn example_layered_security() {
             view.with_wo_slice(0x400, 4, |mut slice| {
                 // UART - OK
                 slice.fill(0x12);
-                (true, ())
+                WriteResult::Dirty(())
             })
             .is_ok()
         );
@@ -242,7 +242,7 @@ fn example_layered_security() {
         assert!(
             view.with_wo_slice(0x608, 4, |mut slice| {
                 slice.fill(0x00);
-                (true, ())
+                WriteResult::Dirty(())
             })
             .is_ok()
         );

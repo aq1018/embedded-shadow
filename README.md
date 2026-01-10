@@ -37,7 +37,7 @@ The shadow registry uses a **one-way dirty tracking model**:
 │  with_wo_slice() │────────▶│  iter_dirty()      │
 │  (marks dirty)   │  dirty  │  (reads dirty)     │
 │                  │  bits   │                    │
-│                  │◀────────│  clear_dirty()     │
+│                  │◀────────│  clear_all_dirty() │
 │                  │  reset  │  with_rw_slice()   │
 │                  │         │  (no dirty mark)   │
 └──────────────────┘         └────────────────────┘
@@ -70,7 +70,7 @@ storage.host_shadow().with_view(|view| {
     view.with_wo_slice(0x100, 4, |mut slice| {
         slice.write_u16_le_at(0, 0x001F);  // flags
         slice.write_u16_le_at(2, 5000);    // timeout_ms
-        (true, ()) // mark dirty
+        WriteResult::Dirty(()) // mark dirty
     }).unwrap();
 });
 
@@ -85,7 +85,7 @@ unsafe {
             let _ = (flags, timeout);
             Ok(())
         }).unwrap();
-        view.clear_dirty();
+        view.clear_all_dirty();
     });
 }
 ```

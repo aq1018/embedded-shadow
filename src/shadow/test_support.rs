@@ -1,7 +1,7 @@
 //! Test support utilities - only compiled in test builds.
 
 use crate::shadow::{
-    ShadowError,
+    ShadowError, WriteResult,
     persist::{NoPersist, PersistTrigger},
     policy::{AccessPolicy, AllowAllPolicy, NoPersistPolicy, PersistPolicy},
     staged::PatchStagingBuffer,
@@ -53,7 +53,7 @@ pub fn test_storage() -> TestStorage {
 pub fn stage_write(stage: &mut TestStage, addr: u16, data: &[u8]) -> Result<(), ShadowError> {
     stage.alloc_staged(addr, data.len(), |buf| {
         buf.copy_from_slice(data);
-        true
+        WriteResult::Dirty(())
     })?;
     Ok(())
 }

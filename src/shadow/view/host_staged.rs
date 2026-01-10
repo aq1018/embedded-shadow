@@ -1,5 +1,5 @@
 use crate::shadow::{
-    AccessPolicy, HostView, PersistTrigger, ShadowError,
+    AccessPolicy, HostView, PersistTrigger, ShadowError, WriteResult,
     policy::PersistPolicy,
     slice::{ROSlice, RWSlice, WOSlice},
     types::StagingBuffer,
@@ -61,9 +61,9 @@ where
         addr: u16,
         len: usize,
         f: F,
-    ) -> Result<(bool, R), ShadowError>
+    ) -> Result<WriteResult<R>, ShadowError>
     where
-        F: FnOnce(WOSlice<'_>) -> (bool, R),
+        F: FnOnce(WOSlice<'_>) -> WriteResult<R>,
     {
         self.base.with_wo_slice(addr, len, f)
     }
@@ -74,38 +74,48 @@ where
         addr: u16,
         len: usize,
         f: F,
-    ) -> Result<(bool, R), ShadowError>
+    ) -> Result<WriteResult<R>, ShadowError>
     where
-        F: FnOnce(RWSlice<'_>) -> (bool, R),
+        F: FnOnce(RWSlice<'_>) -> WriteResult<R>,
     {
         self.base.with_rw_slice(addr, len, f)
     }
 
     /// Zero-copy staged write access via RWSlice.
     ///
-    /// Return `(true, result)` from your callback to commit the staged write.
-    /// If you return `false`, no data is staged and space is reclaimed.
+    /// Return `WriteResult::Dirty(result)` from your callback to commit the staged write.
+    /// Return `WriteResult::Clean(result)` to reclaim space without committing.
     pub fn alloc_staged<F, R>(
         &mut self,
         addr: u16,
         len: usize,
         f: F,
-    ) -> Result<(bool, R), ShadowError>
+    ) -> Result<WriteResult<R>, ShadowError>
     where
-        F: FnOnce(RWSlice<'_>) -> (bool, R),
+        F: FnOnce(RWSlice<'_>) -> WriteResult<R>,
     {
         if !self.base.access_policy.can_write(addr, len) {
             return Err(ShadowError::Denied);
         }
 
         let mut result = None;
-        let written = self.sb.alloc_staged(addr, len, |data| {
-            let (written, r) = f(RWSlice::new(data));
-            result = Some(r);
-            written
+        let write_result = self.sb.alloc_staged(addr, len, |data| {
+            let wr = f(RWSlice::new(data));
+            let is_dirty = wr.is_dirty();
+            result = Some(wr.into_inner());
+            if is_dirty {
+                WriteResult::Dirty(())
+            } else {
+                WriteResult::Clean(())
+            }
         })?;
 
-        Ok((written, result.unwrap()))
+        let inner = result.unwrap();
+        Ok(if write_result.is_dirty() {
+            WriteResult::Dirty(inner)
+        } else {
+            WriteResult::Clean(inner)
+        })
     }
 
     /// Commits all staged writes to the shadow table.
@@ -123,7 +133,7 @@ where
             self.base
                 .with_bytes_mut_no_persist(addr, data.len(), |buf| {
                     buf.copy_from_slice(data);
-                    (true, ())
+                    WriteResult::Dirty(())
                 })?;
             should_persist |=
                 self.base
@@ -183,7 +193,7 @@ mod tests {
             let mut view = fixture.view();
             view.alloc_staged(0, 4, |mut slice| {
                 slice.copy_from_slice(&[0xAA, 0xBB, 0xCC, 0xDD]);
-                (true, ())
+                WriteResult::Dirty(())
             })
             .unwrap();
             view.commit_staged().unwrap();
@@ -200,7 +210,7 @@ mod tests {
             let mut view = fixture.view();
             view.alloc_staged(0, 4, |mut slice| {
                 slice.copy_from_slice(&[0x01; 4]);
-                (true, ())
+                WriteResult::Dirty(())
             })
             .unwrap();
         }
@@ -223,14 +233,14 @@ mod tests {
         {
             let mut view = fixture.view();
 
-            let (written, _) = view
+            let result = view
                 .alloc_staged(0, 4, |mut slice| {
                     slice.copy_from_slice(&[0xAA, 0xBB, 0xCC, 0xDD]);
-                    (true, ())
+                    WriteResult::Dirty(())
                 })
                 .unwrap();
 
-            assert!(written);
+            assert!(result.is_dirty());
             view.commit_staged().unwrap();
         }
 
@@ -243,14 +253,14 @@ mod tests {
         let mut fixture = TestHostViewStagedFixture::new();
         let mut view = fixture.view();
 
-        let (written, _) = view
+        let result = view
             .alloc_staged(0, 4, |mut slice| {
                 slice.copy_from_slice(&[0xAA, 0xBB, 0xCC, 0xDD]);
-                (false, ()) // Don't commit the write
+                WriteResult::Clean(()) // Don't commit the write
             })
             .unwrap();
 
-        assert!(!written);
+        assert!(!result.is_dirty());
         assert!(!fixture.stage.any_staged());
     }
 
@@ -265,7 +275,7 @@ mod tests {
         let base = HostView::new(&mut table, &policy, &persist_policy, &mut trigger);
         let mut view = HostViewStaged::new(base, &mut stage);
 
-        assert_denied(view.alloc_staged(0, 4, |_| (false, ())));
+        assert_denied(view.alloc_staged(0, 4, |_| WriteResult::Clean(())));
         assert!(!stage.any_staged());
     }
 
@@ -312,7 +322,7 @@ mod tests {
             // Stage a write
             view.alloc_staged(0, 4, |mut slice| {
                 slice.copy_from_slice(&[0xAA, 0xBB, 0xCC, 0xDD]);
-                (true, ())
+                WriteResult::Dirty(())
             })
             .unwrap();
 

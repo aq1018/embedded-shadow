@@ -94,22 +94,19 @@ impl<const TS: usize, const BS: usize>
 {
     /// Set the number of blocks.
     ///
-    /// # Panics
-    /// Panics at runtime if TS != BS * BC.
+    /// # Compile-time Validation
+    /// Fails to compile if `TS != BS * BC`.
     /// For a 1024-byte storage with 64-byte blocks, use BC = 16.
     pub fn block_count<const BC: usize>(
         self,
     ) -> ShadowStorageBuilder<TS, BS, BC, (), (), (), (), NeedAccessPolicy> {
-        // Early validation - fail fast with clear error message
-        assert_eq!(
-            TS,
-            BS * BC,
-            "Total size {} does not match block_size {} * block_count {} = {}",
-            TS,
-            BS,
-            BC,
-            BS * BC
-        );
+        // Compile-time validation using const block (Rust 1.79+)
+        const {
+            assert!(
+                TS == BS * BC,
+                "total_size must equal block_size * block_count"
+            );
+        }
 
         ShadowStorageBuilder {
             access_policy: None,
@@ -277,15 +274,14 @@ mod tests {
             .build();
     }
 
-    #[test]
-    #[should_panic(expected = "Total size 1024 does not match block_size 64 * block_count 15")]
-    fn test_builder_panics_on_mismatch() {
-        let _storage = ShadowStorageBuilder::new()
-            .total_size::<1024>()
-            .block_size::<64>()
-            .block_count::<15>() // 64 * 15 = 960, not 1024!
-            .default_access()
-            .no_persist()
-            .build();
-    }
+    // Note: Mismatched sizes (TS != BS * BC) now fail at compile time.
+    // The following would not compile:
+    //
+    // ShadowStorageBuilder::new()
+    //     .total_size::<1024>()
+    //     .block_size::<64>()
+    //     .block_count::<15>()  // 64 * 15 = 960, not 1024! → compile error
+    //     ...
+    //
+    // This cannot be tested with #[should_panic] since it's a compile-time check.
 }

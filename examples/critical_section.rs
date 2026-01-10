@@ -79,7 +79,7 @@ fn main() {
             println!("  Writing 16 bytes to 0x{:04X}", addr);
             view.with_wo_slice(addr, 16, |mut slice| {
                 slice.fill(value);
-                (true, ())
+                WriteResult::Dirty(())
             })
             .unwrap();
         });
@@ -135,7 +135,7 @@ fn handle_interrupt() {
 
             if dirty_found {
                 // Clear all dirty flags after processing
-                view.clear_dirty();
+                view.clear_all_dirty();
                 println!("    Cleared dirty flags");
             } else {
                 println!("    No dirty blocks");

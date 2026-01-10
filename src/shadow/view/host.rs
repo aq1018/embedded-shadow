@@ -1,7 +1,7 @@
 use core::marker::PhantomData;
 
 use crate::shadow::{
-    AccessPolicy, PersistTrigger, ShadowError,
+    AccessPolicy, PersistTrigger, ShadowError, WriteResult,
     policy::PersistPolicy,
     slice::{ROSlice, RWSlice, WOSlice},
     table::ShadowTable,
@@ -78,25 +78,26 @@ where
     /// Provides zero-copy write access via WOSlice.
     ///
     /// Returns `Denied` if the access policy rejects the write.
-    /// Return `(true, result)` from your callback to mark the range as modified.
+    /// Return `WriteResult::Dirty(result)` from your callback to mark the range as modified.
+    /// Return `WriteResult::Clean(result)` to skip dirty marking.
     /// If dirty, triggers persistence based on configured policy.
     pub fn with_wo_slice<F, R>(
         &mut self,
         addr: u16,
         len: usize,
         f: F,
-    ) -> Result<(bool, R), ShadowError>
+    ) -> Result<WriteResult<R>, ShadowError>
     where
-        F: FnOnce(WOSlice<'_>) -> (bool, R),
+        F: FnOnce(WOSlice<'_>) -> WriteResult<R>,
     {
         if !self.access_policy.can_write(addr, len) {
             return Err(ShadowError::Denied);
         }
 
-        let (is_dirty, result) =
+        let write_result =
             self.with_bytes_mut_no_persist(addr, len, |data| f(WOSlice::new(data)))?;
 
-        if is_dirty {
+        if write_result.is_dirty() {
             let should_persist =
                 self.persist_policy
                     .push_persist_keys_for_range(addr, len, |key| {
@@ -108,31 +109,32 @@ where
             }
         }
 
-        Ok((is_dirty, result))
+        Ok(write_result)
     }
 
     /// Provides zero-copy read-write access via RWSlice.
     ///
     /// Returns `Denied` if the access policy rejects either read or write.
-    /// Return `(true, result)` from your callback to mark the range as modified.
+    /// Return `WriteResult::Dirty(result)` from your callback to mark the range as modified.
+    /// Return `WriteResult::Clean(result)` to skip dirty marking.
     /// If dirty, triggers persistence based on configured policy.
     pub fn with_rw_slice<F, R>(
         &mut self,
         addr: u16,
         len: usize,
         f: F,
-    ) -> Result<(bool, R), ShadowError>
+    ) -> Result<WriteResult<R>, ShadowError>
     where
-        F: FnOnce(RWSlice<'_>) -> (bool, R),
+        F: FnOnce(RWSlice<'_>) -> WriteResult<R>,
     {
         if !self.access_policy.can_read(addr, len) || !self.access_policy.can_write(addr, len) {
             return Err(ShadowError::Denied);
         }
 
-        let (is_dirty, result) =
+        let write_result =
             self.with_bytes_mut_no_persist(addr, len, |data| f(RWSlice::new(data)))?;
 
-        if is_dirty {
+        if write_result.is_dirty() {
             let should_persist =
                 self.persist_policy
                     .push_persist_keys_for_range(addr, len, |key| {
@@ -144,7 +146,7 @@ where
             }
         }
 
-        Ok((is_dirty, result))
+        Ok(write_result)
     }
 
     pub(crate) fn with_bytes_mut_no_persist<F, R>(
@@ -152,17 +154,17 @@ where
         addr: u16,
         len: usize,
         f: F,
-    ) -> Result<(bool, R), ShadowError>
+    ) -> Result<WriteResult<R>, ShadowError>
     where
-        F: FnOnce(&mut [u8]) -> (bool, R),
+        F: FnOnce(&mut [u8]) -> WriteResult<R>,
     {
-        let (is_dirty, result) = self.table.with_bytes_mut(addr, len, |data| Ok(f(data)))?;
+        let write_result = self.table.with_bytes_mut(addr, len, |data| Ok(f(data)))?;
 
-        if is_dirty {
+        if write_result.is_dirty() {
             self.table.mark_dirty(addr, len)?;
         }
 
-        Ok((is_dirty, result))
+        Ok(write_result)
     }
 }
 
@@ -176,36 +178,36 @@ mod tests {
     };
 
     #[test]
-    fn with_wo_slice_marks_dirty_when_callback_returns_true() {
+    fn with_wo_slice_marks_dirty_when_callback_returns_dirty() {
         let mut fixture = TestHostViewFixture::new();
 
         {
             let mut view = fixture.view();
-            let (is_dirty, _) = view
+            let result = view
                 .with_wo_slice(0, 4, |mut slice| {
                     slice.copy_from_slice(&[0x01, 0x02, 0x03, 0x04]);
-                    (true, ())
+                    WriteResult::Dirty(())
                 })
                 .unwrap();
-            assert!(is_dirty);
+            assert!(result.is_dirty());
         }
 
         assert!(fixture.table.is_dirty(0, 4).unwrap());
     }
 
     #[test]
-    fn with_wo_slice_no_dirty_when_callback_returns_false() {
+    fn with_wo_slice_no_dirty_when_callback_returns_clean() {
         let mut fixture = TestHostViewFixture::new();
 
         {
             let mut view = fixture.view();
-            let (is_dirty, _) = view
+            let result = view
                 .with_wo_slice(0, 4, |mut slice| {
                     slice.copy_from_slice(&[0x01, 0x02, 0x03, 0x04]);
-                    (false, ()) // Don't mark dirty
+                    WriteResult::Clean(()) // Don't mark dirty
                 })
                 .unwrap();
-            assert!(!is_dirty);
+            assert!(!result.is_dirty());
         }
 
         assert!(!fixture.table.any_dirty());
@@ -227,13 +229,13 @@ mod tests {
         // Test WO denied
         {
             let mut view = HostView::new(&mut table, &policy, &persist_policy, &mut trigger);
-            assert_denied(view.with_wo_slice(0, 4, |_| (false, ())));
+            assert_denied(view.with_wo_slice(0, 4, |_| WriteResult::Clean(())));
         }
 
         // Test RW denied
         {
             let mut view = HostView::new(&mut table, &policy, &persist_policy, &mut trigger);
-            assert_denied(view.with_rw_slice(0, 4, |_| (false, ())));
+            assert_denied(view.with_rw_slice(0, 4, |_| WriteResult::Clean(())));
         }
     }
 
@@ -247,10 +249,10 @@ mod tests {
         let mut view = HostView::new(&mut table, &policy, &persist_policy, &mut trigger);
 
         // Below 32: can read but not write, so rw_slice should fail
-        assert_denied(view.with_rw_slice(0, 4, |_| (false, ())));
+        assert_denied(view.with_rw_slice(0, 4, |_| WriteResult::Clean(())));
 
         // At 32: can both read and write, so rw_slice should work
-        let result = view.with_rw_slice(32, 4, |_| (true, ()));
+        let result = view.with_rw_slice(32, 4, |_| WriteResult::Dirty(()));
         assert!(result.is_ok());
     }
 
@@ -267,10 +269,10 @@ mod tests {
         {
             let mut view = HostView::new(&mut table, &policy, &persist_policy, &mut trigger);
 
-            // Write data but return (false, ()) to indicate not dirty
+            // Write data but return Clean to indicate not dirty
             view.with_wo_slice(0, 4, |mut slice| {
                 slice.copy_from_slice(&[0x01, 0x02, 0x03, 0x04]);
-                (false, ()) // Not dirty - should not trigger persist
+                WriteResult::Clean(()) // Not dirty - should not trigger persist
             })
             .unwrap();
         }
@@ -295,7 +297,7 @@ mod tests {
             let mut view = HostView::new(&mut table, &policy, &persist_policy, &mut trigger);
             view.with_wo_slice(0, 4, |mut slice| {
                 slice.copy_from_slice(&[0x01, 0x02, 0x03, 0x04]);
-                (true, ()) // Mark dirty - should trigger persist
+                WriteResult::Dirty(()) // Mark dirty - should trigger persist
             })
             .unwrap();
         }
@@ -316,13 +318,13 @@ mod tests {
 
         {
             let mut view = HostView::new(&mut table, &policy, &persist_policy, &mut trigger);
-            let (is_dirty, _) = view
+            let result = view
                 .with_rw_slice(0, 4, |mut slice| {
                     slice.copy_from_slice(&[0xAA, 0xBB, 0xCC, 0xDD]);
-                    (true, ())
+                    WriteResult::Dirty(())
                 })
                 .unwrap();
-            assert!(is_dirty);
+            assert!(result.is_dirty());
         }
 
         assert!(trigger.persist_requested);
@@ -338,27 +340,27 @@ mod tests {
             let mut view = fixture.view();
             view.with_wo_slice(0, 4, |mut slice| {
                 slice.copy_from_slice(&[0x01, 0x02, 0x03, 0x04]);
-                (true, ())
+                WriteResult::Dirty(())
             })
             .unwrap();
         }
 
         // Clear dirty for next test
-        fixture.table.clear_dirty();
+        fixture.table.clear_all_dirty();
 
         // Now read and modify using RW slice
         {
             let mut view = fixture.view();
-            let (is_dirty, read_value) = view
+            let result = view
                 .with_rw_slice(0, 4, |mut slice| {
                     let first_byte = slice.read_u8_at(0);
                     slice.copy_from_slice(&[first_byte + 1, 0x22, 0x33, 0x44]);
-                    (true, first_byte)
+                    WriteResult::Dirty(first_byte)
                 })
                 .unwrap();
 
-            assert!(is_dirty);
-            assert_eq!(read_value, 0x01);
+            assert!(result.is_dirty());
+            assert_eq!(result.into_inner(), 0x01);
         }
 
         // Verify data was modified
