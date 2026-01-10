@@ -1,5 +1,6 @@
 use super::macros::{
-    impl_slice_common, impl_slice_wo, impl_write_primitive, impl_write_primitives,
+    impl_slice_common, impl_slice_wo, impl_try_write_primitive, impl_try_write_primitives,
+    impl_write_primitive, impl_write_primitives,
 };
 
 /// Write-only slice wrapper.
@@ -65,5 +66,67 @@ mod tests {
     fn wo_slice_write_u16_out_of_bounds() {
         let mut data = [0u8; 2];
         WOSlice::new(&mut data).write_u16_le_at(1, 0x1234); // offset 1 + size 2 > len 2
+    }
+
+    #[test]
+    fn try_write_operations() {
+        let mut data = [0u8; 4];
+
+        // Successful writes
+        assert_eq!(WOSlice::new(&mut data).try_write_u8_at(0, 0x11), Some(()));
+        assert_eq!(data[0], 0x11);
+
+        assert_eq!(WOSlice::new(&mut data).try_write_i8_at(1, -1), Some(()));
+        assert_eq!(data[1], 0xFF);
+
+        assert_eq!(
+            WOSlice::new(&mut data).try_write_u16_le_at(0, 0x1234),
+            Some(())
+        );
+        assert_eq!(data[0..2], [0x34, 0x12]);
+
+        assert_eq!(
+            WOSlice::new(&mut data).try_write_u32_be_at(0, 0x12345678),
+            Some(())
+        );
+        assert_eq!(data, [0x12, 0x34, 0x56, 0x78]);
+
+        // Out of bounds returns None
+        assert_eq!(WOSlice::new(&mut data).try_write_u8_at(4, 0x00), None);
+        assert_eq!(WOSlice::new(&mut data).try_write_u16_le_at(3, 0x0000), None);
+        assert_eq!(
+            WOSlice::new(&mut data).try_write_u32_le_at(1, 0x00000000),
+            None
+        );
+    }
+
+    #[test]
+    fn try_copy_from_slice_at_operations() {
+        let mut data = [0u8; 4];
+
+        // Successful copy
+        assert_eq!(
+            WOSlice::new(&mut data).try_copy_from_slice_at(1, &[0x11, 0x22]),
+            Some(())
+        );
+        assert_eq!(data, [0x00, 0x11, 0x22, 0x00]);
+
+        // Out of bounds returns None
+        assert_eq!(
+            WOSlice::new(&mut data).try_copy_from_slice_at(2, &[0x11, 0x22, 0x33]),
+            None
+        );
+    }
+
+    #[test]
+    fn try_fill_at_operations() {
+        let mut data = [0u8; 4];
+
+        // Successful fill
+        assert_eq!(WOSlice::new(&mut data).try_fill_at(1, 2, 0xAA), Some(()));
+        assert_eq!(data, [0x00, 0xAA, 0xAA, 0x00]);
+
+        // Out of bounds returns None
+        assert_eq!(WOSlice::new(&mut data).try_fill_at(2, 3, 0xBB), None);
     }
 }

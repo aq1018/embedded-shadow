@@ -1,6 +1,7 @@
 use super::macros::{
     impl_read_primitive, impl_read_primitives, impl_slice_common, impl_slice_ro, impl_slice_wo,
-    impl_write_primitive, impl_write_primitives,
+    impl_try_read_primitive, impl_try_read_primitives, impl_try_write_primitive,
+    impl_try_write_primitives, impl_write_primitive, impl_write_primitives,
 };
 
 /// Read-write slice wrapper.

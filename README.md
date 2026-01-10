@@ -6,6 +6,10 @@
 
 A `no_std`, no-alloc shadow register table for embedded systems with dirty tracking and transactional writes.
 
+## Requirements
+
+- **Rust 1.85+** (Edition 2024) - Uses const blocks for compile-time validation
+
 ## Features
 
 - **Zero allocation** - All storage is statically allocated via const generics
@@ -93,18 +97,53 @@ unsafe {
 
 ## Choosing Block Size
 
-Block size controls dirty tracking granularity. Some considerations:
+Block size controls dirty tracking granularity. Consider:
 
-- **Smaller blocks** (e.g., 8-16 bytes): Finer tracking, more dirty bits, better for scattered small writes
-- **Larger blocks** (e.g., 64-256 bytes): Coarser tracking, fewer dirty bits, better for sequential or bulk writes
+- **Smaller blocks** (8-16 bytes): Finer tracking, more bitmap overhead, better for scattered small writes
+- **Larger blocks** (64-256 bytes): Coarser tracking, less overhead, better for bulk writes
 
-Common patterns:
-- Match your hardware's natural transfer size (SPI page, I2C buffer)
-- Match your persist sector size if using flash persistence
-- Align features to blocks so each block represents one logical feature—when iterating dirty blocks, you can match on block address to update only the affected feature
-- Power of 2 sizes work well with typical memory layouts
+### Common Patterns
+
+| Use Case | Typical Block Size | Rationale |
+|----------|-------------------|-----------|
+| SPI Flash | 256 bytes | Matches typical page size |
+| I2C EEPROM | 32-64 bytes | Matches page write buffer |
+| Motor controller registers | 16-32 bytes | Groups related parameters |
+| Display frame buffer | 128-256 bytes | Balances granularity with DMA efficiency |
+| General config | 64 bytes | Good default for mixed access patterns |
+
+### Alignment Tips
+
+- Align logical features to block boundaries when possible
+- Power-of-2 sizes work well with typical memory layouts
+- Match persist sector size if using flash persistence
+- When iterating dirty blocks, you can match on block address to update only the affected feature
 
 There's no universal "best" size—choose based on your access patterns and memory constraints.
+
+## Address Space
+
+Addresses use `u16`, limiting total storage to 64KB. This is sufficient for most embedded/MCU applications where shadow registers typically range from a few hundred bytes to a few kilobytes.
+
+If your application requires larger address spaces, please [file an issue](https://github.com/aq1018/embedded-shadow/issues).
+
+## Staging Buffer Sizing
+
+When using transactional writes, size your `PatchStagingBuffer<DC, EC>`:
+
+- **DC (Data Capacity)**: Total bytes of staged data. Sum the largest expected transaction.
+- **EC (Entry Capacity)**: Maximum number of separate writes per transaction.
+
+```rust
+// Example: Up to 16 writes totaling 256 bytes
+let staging = PatchStagingBuffer::<256, 16>::new();
+```
+
+If staging overflows, `alloc_staged()` returns `StageFull`. Start with generous estimates and tune down based on actual usage. For memory-constrained systems, consider:
+
+- Smaller transactions with more frequent commits
+- Combining adjacent writes into single larger writes
+- Reducing EC if writes are always contiguous
 
 ## Documentation
 
@@ -116,6 +155,15 @@ There's no universal "best" size—choose based on your access patterns and memo
   - [`persist.rs`](examples/persist.rs) - Flash persistence patterns
   - [`complex.rs`](examples/complex.rs) - Real-world motor controller simulation
 
+## Thread Safety
+
+`ShadowStorage` uses interior mutability via `UnsafeCell` and is **not `Sync`** by default. Safe concurrent access is provided through:
+
+- **`with_view()`** - Wraps access in a `critical_section`, safe for ISR/main coordination
+- **`with_view_unchecked()`** - Bypasses critical section for performance when caller guarantees exclusive access
+
+For multi-core scenarios, wrap storage access in platform-specific synchronization primitives.
+
 ## Critical Section
 
 This crate requires a `critical-section` implementation for your platform. Most embedded HALs provide this. For testing, add:
@@ -124,6 +172,25 @@ This crate requires a `critical-section` implementation for your platform. Most 
 [dev-dependencies]
 critical-section = { version = "1.2", features = ["std"] }
 ```
+
+## Safety
+
+This crate uses `#![deny(unsafe_code)]` at the crate root, with `unsafe` allowed only in `storage.rs` for interior mutability.
+
+### Interior Mutability
+
+`ShadowStorage` uses `UnsafeCell` to allow mutation through shared references. Safety is ensured by:
+
+1. **Critical sections**: `with_view()` wraps all access in `critical_section::with()`
+2. **Single-threaded guarantee**: `with_view_unchecked()` requires caller to ensure exclusive access (typically in ISR context or before interrupts are enabled)
+
+### Invariants
+
+- Only one view (Host or Kernel) should be active at a time
+- `with_view_unchecked()` is safe when:
+  - Interrupts are disabled
+  - Called from an ISR that cannot be preempted
+  - Running single-threaded during initialization
 
 ## License
 
