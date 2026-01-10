@@ -20,6 +20,20 @@ where
     sb: &'a mut SB,
 }
 
+impl<'a, const TS: usize, const BS: usize, const BC: usize, AP, PP, PT, PK, SB> core::fmt::Debug
+    for HostViewStaged<'a, TS, BS, BC, AP, PP, PT, PK, SB>
+where
+    AP: AccessPolicy,
+    PP: PersistPolicy<PK>,
+    PT: PersistTrigger<PK>,
+    bitmaps::BitsImpl<BC>: bitmaps::Bits,
+    SB: StagingBuffer,
+{
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("HostViewStaged").finish_non_exhaustive()
+    }
+}
+
 impl<'a, const TS: usize, const BS: usize, const BC: usize, AP, PP, PT, PK, SB>
     HostViewStaged<'a, TS, BS, BC, AP, PP, PT, PK, SB>
 where

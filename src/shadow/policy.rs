@@ -7,7 +7,7 @@ pub trait AccessPolicy {
 }
 
 /// Default policy that allows all reads and writes.
-#[derive(Default)]
+#[derive(Debug, Default, Clone, Copy)]
 pub struct AllowAllPolicy {}
 
 impl AccessPolicy for AllowAllPolicy {
@@ -29,7 +29,7 @@ pub trait PersistPolicy<PK> {
 }
 
 /// Default policy that never triggers persistence.
-#[derive(Default)]
+#[derive(Debug, Default, Clone, Copy)]
 pub struct NoPersistPolicy {}
 
 impl PersistPolicy<()> for NoPersistPolicy {

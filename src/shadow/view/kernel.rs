@@ -16,6 +16,16 @@ where
     table: &'a mut ShadowTable<TS, BS, BC>,
 }
 
+impl<'a, const TS: usize, const BS: usize, const BC: usize> core::fmt::Debug
+    for KernelView<'a, TS, BS, BC>
+where
+    bitmaps::BitsImpl<BC>: bitmaps::Bits,
+{
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("KernelView").finish_non_exhaustive()
+    }
+}
+
 impl<'a, const TS: usize, const BS: usize, const BC: usize> KernelView<'a, TS, BS, BC>
 where
     bitmaps::BitsImpl<BC>: bitmaps::Bits,

@@ -25,6 +25,19 @@ where
     _phantom: PhantomData<PK>,
 }
 
+impl<'a, const TS: usize, const BS: usize, const BC: usize, AP, PP, PT, PK> core::fmt::Debug
+    for HostView<'a, TS, BS, BC, AP, PP, PT, PK>
+where
+    bitmaps::BitsImpl<BC>: bitmaps::Bits,
+    AP: AccessPolicy,
+    PP: PersistPolicy<PK>,
+    PT: PersistTrigger<PK>,
+{
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("HostView").finish_non_exhaustive()
+    }
+}
+
 impl<'a, const TS: usize, const BS: usize, const BC: usize, AP, PP, PT, PK>
     HostView<'a, TS, BS, BC, AP, PP, PT, PK>
 where

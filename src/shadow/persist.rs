@@ -7,6 +7,7 @@ pub trait PersistTrigger<PK> {
 }
 
 /// No-op trigger that discards all persistence requests.
+#[derive(Debug, Default, Clone, Copy)]
 pub struct NoPersist;
 
 impl<PK> PersistTrigger<PK> for NoPersist {

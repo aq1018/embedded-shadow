@@ -4,6 +4,7 @@ use super::macros::{impl_read_primitive, impl_read_primitives, impl_slice_common
 ///
 /// Provides read-only access to a byte slice with bounds-checked
 /// methods for reading primitives and copying data out.
+#[derive(Debug)]
 pub struct ROSlice<'a>(&'a [u8]);
 
 impl<'a> ROSlice<'a> {

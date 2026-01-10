@@ -7,6 +7,7 @@ use super::macros::{
 ///
 /// Provides full read and write access to a byte slice with bounds-checked
 /// methods for reading/writing primitives and copying data.
+#[derive(Debug)]
 pub struct RWSlice<'a>(&'a mut [u8]);
 
 impl<'a> RWSlice<'a> {

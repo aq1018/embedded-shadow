@@ -10,3 +10,14 @@ pub enum ShadowError {
     /// Staging buffer capacity exceeded.
     StageFull,
 }
+
+impl core::fmt::Display for ShadowError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            ShadowError::OutOfBounds => write!(f, "address or length exceeds table bounds"),
+            ShadowError::ZeroLength => write!(f, "operation attempted with zero length"),
+            ShadowError::Denied => write!(f, "access denied by policy"),
+            ShadowError::StageFull => write!(f, "staging buffer capacity exceeded"),
+        }
+    }
+}

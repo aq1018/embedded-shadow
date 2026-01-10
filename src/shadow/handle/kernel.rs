@@ -15,6 +15,19 @@ where
     storage: &'a ShadowStorageBase<TS, BS, BC, AP, PP, PT, PK, SS>,
 }
 
+impl<'a, const TS: usize, const BS: usize, const BC: usize, AP, PP, PT, PK, SS> core::fmt::Debug
+    for KernelShadow<'a, TS, BS, BC, AP, PP, PT, PK, SS>
+where
+    AP: AccessPolicy,
+    PP: PersistPolicy<PK>,
+    PT: PersistTrigger<PK>,
+    bitmaps::BitsImpl<BC>: bitmaps::Bits,
+{
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("KernelShadow").finish_non_exhaustive()
+    }
+}
+
 impl<'a, const TS: usize, const BS: usize, const BC: usize, AP, PP, PT, PK, SS>
     KernelShadow<'a, TS, BS, BC, AP, PP, PT, PK, SS>
 where

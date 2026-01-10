@@ -39,6 +39,15 @@ pub struct ShadowStorageBuilder<
     _phantom: PhantomData<(PK, State)>,
 }
 
+impl<const TS: usize, const BS: usize, const BC: usize, AP, PP, PT, PK, State> core::fmt::Debug
+    for ShadowStorageBuilder<TS, BS, BC, AP, PP, PT, PK, State>
+{
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("ShadowStorageBuilder")
+            .finish_non_exhaustive()
+    }
+}
+
 // Start the builder
 impl ShadowStorageBuilder<0, 0, 0, (), (), (), (), NeedTotalSize> {
     pub fn new() -> Self {

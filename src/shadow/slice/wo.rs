@@ -7,6 +7,7 @@ use super::macros::{
 /// Provides write-only access to a byte slice with bounds-checked
 /// methods for writing primitives and copying data in. The underlying
 /// data cannot be read through this wrapper.
+#[derive(Debug)]
 pub struct WOSlice<'a>(&'a mut [u8]);
 
 impl<'a> WOSlice<'a> {
