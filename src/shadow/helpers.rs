@@ -4,7 +4,7 @@
 //! or [`PersistPolicy`](crate::PersistPolicy) types that need to reason about
 //! address ranges and block boundaries.
 
-use crate::ShadowError;
+use super::ShadowError;
 
 /// Calculates which blocks are spanned by an address range.
 ///
@@ -26,7 +26,7 @@ use crate::ShadowError;
 ///
 /// # Example
 /// ```
-/// use embedded_shadow::helpers::block_span;
+/// use embedded_shadow::shadow::helpers::block_span;
 ///
 /// // 64-byte table, 16-byte blocks, 4 blocks
 /// // Address 20 with length 10 spans bytes 20-29, which is block 1

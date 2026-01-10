@@ -1,6 +1,8 @@
 use core::marker::PhantomData;
 
-use crate::{AccessPolicy, PersistTrigger, ShadowError, policy::PersistPolicy, table::ShadowTable};
+use super::super::{
+    AccessPolicy, PersistTrigger, ShadowError, policy::PersistPolicy, table::ShadowTable,
+};
 use bitmaps::{Bits, BitsImpl};
 
 /// Application/host-side view of the shadow table.
@@ -92,8 +94,8 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::persist::NoPersist;
-    use crate::policy::{AllowAllPolicy, NoPersistPolicy};
+    use crate::shadow::persist::NoPersist;
+    use crate::shadow::policy::{AllowAllPolicy, NoPersistPolicy};
     use crate::shadow::test_support::{DenyAllPolicy, ReadOnlyBelow32, TestTable};
 
     #[test]

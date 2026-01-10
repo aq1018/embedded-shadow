@@ -93,8 +93,9 @@
 
 pub mod shadow;
 
-pub use shadow::*;
+// Key types re-exported at crate root for convenience
+pub use shadow::{AccessPolicy, PersistPolicy, ShadowError, ShadowStorage, ShadowStorageBuilder};
 
 pub mod prelude {
-    pub use crate::shadow::*;
+    pub use crate::shadow::prelude::*;
 }

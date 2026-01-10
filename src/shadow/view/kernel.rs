@@ -1,4 +1,4 @@
-use crate::table::ShadowTable;
+use super::super::table::ShadowTable;
 
 /// Hardware/kernel-side view of the shadow table.
 ///

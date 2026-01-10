@@ -1,10 +1,10 @@
 //! Test support utilities - only compiled in test builds.
 
-use crate::persist::NoPersist;
-use crate::policy::{AccessPolicy, AllowAllPolicy, NoPersistPolicy};
-use crate::staged::PatchStagingBuffer;
-use crate::storage::ShadowStorage;
-use crate::table::ShadowTable;
+use super::persist::NoPersist;
+use super::policy::{AccessPolicy, AllowAllPolicy, NoPersistPolicy};
+use super::staged::PatchStagingBuffer;
+use super::storage::ShadowStorage;
+use super::table::ShadowTable;
 
 /// Standard test configuration: 64 bytes, 16-byte blocks, 4 blocks
 pub type TestTable = ShadowTable<64, 16, 4>;

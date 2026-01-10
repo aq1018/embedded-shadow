@@ -1,4 +1,6 @@
-use crate::{AccessPolicy, HostView, PersistTrigger, policy::PersistPolicy, types::StagingBuffer};
+use super::super::{
+    AccessPolicy, HostView, PersistTrigger, policy::PersistPolicy, types::StagingBuffer,
+};
 use bitmaps::{Bits, BitsImpl};
 
 /// Host view with transactional staging support.
@@ -99,12 +101,12 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::ShadowError;
-    use crate::persist::NoPersist;
-    use crate::policy::{AllowAllPolicy, NoPersistPolicy};
+    use crate::shadow::ShadowError;
+    use crate::shadow::persist::NoPersist;
+    use crate::shadow::policy::{AllowAllPolicy, NoPersistPolicy};
+    use crate::shadow::staged::PatchStagingBuffer;
     use crate::shadow::test_support::{DenyAllPolicy, TestTable};
-    use crate::staged::PatchStagingBuffer;
-    use crate::view::HostView;
+    use crate::shadow::view::HostView;
 
     use super::*;
 

@@ -4,7 +4,7 @@ use core::{cell::UnsafeCell, marker::PhantomData};
 
 use bitmaps::{Bits, BitsImpl};
 
-use crate::{
+use super::{
     ShadowError,
     handle::{HostShadow, KernelShadow},
     persist::PersistTrigger,

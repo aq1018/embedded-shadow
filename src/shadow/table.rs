@@ -1,7 +1,7 @@
-use crate::helpers::{block_span, range_span};
+use super::helpers::{block_span, range_span};
 use bitmaps::{Bitmap, Bits, BitsImpl};
 
-use crate::error::ShadowError;
+use super::error::ShadowError;
 
 pub(crate) struct ShadowTable<const TS: usize, const BS: usize, const BC: usize>
 where

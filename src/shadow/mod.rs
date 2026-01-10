@@ -10,6 +10,9 @@ pub(crate) mod table;
 pub mod types;
 pub mod view;
 
+#[cfg(test)]
+mod test_support;
+
 pub use builder::ShadowStorageBuilder;
 pub use error::ShadowError;
 pub use handle::{HostShadow, KernelShadow};
@@ -20,19 +23,10 @@ pub use storage::{ShadowStorage, WriteFn};
 pub use types::StagingBuffer;
 pub use view::{HostView, HostViewStaged, KernelView};
 
-#[cfg(test)]
-mod test_support;
-
 pub mod prelude {
-    pub use crate::{
-        builder::ShadowStorageBuilder,
-        error::ShadowError,
-        handle::{HostShadow, KernelShadow},
-        persist::{NoPersist, PersistTrigger},
-        policy::{AccessPolicy, AllowAllPolicy, NoPersistPolicy, PersistPolicy},
-        staged::PatchStagingBuffer,
-        storage::ShadowStorage,
-        types::StagingBuffer,
-        view::{HostView, HostViewStaged, KernelView},
+    pub use super::{
+        AccessPolicy, AllowAllPolicy, HostShadow, HostView, HostViewStaged, KernelShadow,
+        KernelView, NoPersist, NoPersistPolicy, PatchStagingBuffer, PersistPolicy, PersistTrigger,
+        ShadowError, ShadowStorage, ShadowStorageBuilder, StagingBuffer,
     };
 }

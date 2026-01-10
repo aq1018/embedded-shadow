@@ -2,7 +2,7 @@ use core::marker::PhantomData;
 
 use bitmaps::{Bits, BitsImpl};
 
-use crate::{
+use super::{
     persist::{NoPersist, PersistTrigger},
     policy::{AccessPolicy, AllowAllPolicy, NoPersistPolicy, PersistPolicy},
     storage::ShadowStorage,

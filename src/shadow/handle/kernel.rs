@@ -1,6 +1,6 @@
 #![allow(unsafe_code)]
 
-use crate::{
+use super::super::{
     AccessPolicy, PersistTrigger, policy::PersistPolicy, storage::ShadowStorageBase,
     view::KernelView,
 };
