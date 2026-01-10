@@ -1,19 +1,19 @@
-use super::helpers::{block_span, range_span};
-use bitmaps::{Bitmap, Bits, BitsImpl};
-
-use super::error::ShadowError;
+use crate::shadow::{
+    error::ShadowError,
+    helpers::{block_span, range_span},
+};
 
 pub(crate) struct ShadowTable<const TS: usize, const BS: usize, const BC: usize>
 where
-    BitsImpl<BC>: Bits,
+    bitmaps::BitsImpl<BC>: bitmaps::Bits,
 {
     bytes: [u8; TS],
-    dirty: Bitmap<BC>,
+    dirty: bitmaps::Bitmap<BC>,
 }
 
 impl<const TS: usize, const BS: usize, const BC: usize> ShadowTable<TS, BS, BC>
 where
-    BitsImpl<BC>: Bits,
+    bitmaps::BitsImpl<BC>: bitmaps::Bits,
 {
     pub(crate) fn new() -> Self {
         debug_assert!(
@@ -23,7 +23,7 @@ where
 
         Self {
             bytes: [0; TS],
-            dirty: Bitmap::new(),
+            dirty: bitmaps::Bitmap::new(),
         }
     }
 
@@ -81,7 +81,7 @@ where
     }
 
     pub(crate) fn clear_dirty(&mut self) {
-        self.dirty = Bitmap::new();
+        self.dirty = bitmaps::Bitmap::new();
     }
 }
 

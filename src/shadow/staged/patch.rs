@@ -1,6 +1,6 @@
 use heapless::Vec;
 
-use super::super::{ShadowError, types::StagingBuffer};
+use crate::shadow::{ShadowError, types::StagingBuffer};
 
 #[derive(Clone, Copy)]
 struct StagedWrite {

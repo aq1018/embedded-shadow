@@ -1,4 +1,4 @@
-use crate::ShadowError;
+use crate::shadow::ShadowError;
 
 /// Buffer for staging writes before committing to the shadow table.
 pub trait StagingBuffer {

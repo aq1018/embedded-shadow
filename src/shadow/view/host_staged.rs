@@ -1,7 +1,7 @@
-use super::super::{
-    AccessPolicy, HostView, PersistTrigger, policy::PersistPolicy, types::StagingBuffer,
+use crate::shadow::{
+    AccessPolicy, HostView, PersistTrigger, ShadowError, policy::PersistPolicy,
+    types::StagingBuffer,
 };
-use bitmaps::{Bits, BitsImpl};
 
 /// Host view with transactional staging support.
 ///
@@ -11,7 +11,7 @@ where
     AP: AccessPolicy,
     PP: PersistPolicy<PK>,
     PT: PersistTrigger<PK>,
-    BitsImpl<BC>: Bits,
+    bitmaps::BitsImpl<BC>: bitmaps::Bits,
     SB: StagingBuffer,
 {
     base: HostView<'a, TS, BS, BC, AP, PP, PT, PK>,
@@ -24,7 +24,7 @@ where
     AP: AccessPolicy,
     PP: PersistPolicy<PK>,
     PT: PersistTrigger<PK>,
-    BitsImpl<BC>: Bits,
+    bitmaps::BitsImpl<BC>: bitmaps::Bits,
     SB: StagingBuffer,
 {
     pub(crate) fn new(base: HostView<'a, TS, BS, BC, AP, PP, PT, PK>, sb: &'a mut SB) -> Self {
@@ -32,19 +32,19 @@ where
     }
 
     /// Reads data from the shadow table (ignores staged writes).
-    pub fn read_range(&self, addr: u16, out: &mut [u8]) -> Result<(), crate::ShadowError> {
+    pub fn read_range(&self, addr: u16, out: &mut [u8]) -> Result<(), ShadowError> {
         self.base.read_range(addr, out)
     }
 
     /// Writes directly to the shadow table, bypassing staging.
-    pub fn write_range(&mut self, addr: u16, data: &[u8]) -> Result<(), crate::ShadowError> {
+    pub fn write_range(&mut self, addr: u16, data: &[u8]) -> Result<(), ShadowError> {
         self.base.write_range(addr, data)
     }
 
     /// Reads data with staged writes overlaid on top.
-    pub fn read_range_overlay(&self, addr: u16, out: &mut [u8]) -> Result<(), crate::ShadowError> {
+    pub fn read_range_overlay(&self, addr: u16, out: &mut [u8]) -> Result<(), ShadowError> {
         if !self.base.access_policy.can_read(addr, out.len()) {
-            return Err(crate::ShadowError::Denied);
+            return Err(ShadowError::Denied);
         }
 
         self.base.read_range(addr, out)?;
@@ -53,9 +53,9 @@ where
     }
 
     /// Stages a write to be applied on commit.
-    pub fn write_range_staged(&mut self, addr: u16, data: &[u8]) -> Result<(), crate::ShadowError> {
+    pub fn write_range_staged(&mut self, addr: u16, data: &[u8]) -> Result<(), ShadowError> {
         if !self.base.access_policy.can_write(addr, data.len()) {
-            return Err(crate::ShadowError::Denied);
+            return Err(ShadowError::Denied);
         }
 
         self.sb.write_staged(addr, data)
@@ -66,7 +66,7 @@ where
     /// Staged writes are applied in order, marking blocks dirty and
     /// triggering persistence as configured. The staging buffer is
     /// cleared after successful commit.
-    pub fn commit(&mut self) -> Result<(), crate::ShadowError> {
+    pub fn commit(&mut self) -> Result<(), ShadowError> {
         if !self.sb.any_staged() {
             return Ok(());
         }
@@ -94,7 +94,7 @@ where
 
     /// Commits all staged writes to the shadow table.
     #[deprecated(since = "0.1.2", note = "renamed to `commit()`")]
-    pub fn action(&mut self) -> Result<(), crate::ShadowError> {
+    pub fn action(&mut self) -> Result<(), ShadowError> {
         self.commit()
     }
 }

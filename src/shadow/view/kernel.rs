@@ -1,4 +1,4 @@
-use super::super::table::ShadowTable;
+use crate::shadow::{ShadowError, table::ShadowTable};
 
 /// Hardware/kernel-side view of the shadow table.
 ///
@@ -26,28 +26,28 @@ where
     bitmaps::BitsImpl<BC>: bitmaps::Bits,
 {
     /// Reads data from the shadow table without marking dirty.
-    pub fn read_range(&self, addr: u16, out: &mut [u8]) -> Result<(), crate::ShadowError> {
+    pub fn read_range(&self, addr: u16, out: &mut [u8]) -> Result<(), ShadowError> {
         self.table.read_range(addr, out)
     }
 
     /// Writes data to the shadow table without marking dirty.
     ///
     /// Use this to update the shadow after reading from hardware.
-    pub fn write_range(&mut self, addr: u16, data: &[u8]) -> Result<(), crate::ShadowError> {
+    pub fn write_range(&mut self, addr: u16, data: &[u8]) -> Result<(), ShadowError> {
         self.table.write_range(addr, data)?;
         Ok(())
     }
 
     /// Iterates over each dirty block, providing its address and data.
-    pub fn for_each_dirty_block<F>(&self, mut f: F) -> Result<(), crate::ShadowError>
+    pub fn for_each_dirty_block<F>(&self, mut f: F) -> Result<(), ShadowError>
     where
-        F: FnMut(u16, &[u8]) -> Result<(), crate::ShadowError>,
+        F: FnMut(u16, &[u8]) -> Result<(), ShadowError>,
     {
         self.table.for_each_dirty_block(|addr, data| f(addr, data))
     }
 
     /// Returns true if any block overlapping the given range is dirty.
-    pub fn is_dirty(&self, addr: u16, len: usize) -> Result<bool, crate::ShadowError> {
+    pub fn is_dirty(&self, addr: u16, len: usize) -> Result<bool, ShadowError> {
         self.table.is_dirty(addr, len)
     }
 

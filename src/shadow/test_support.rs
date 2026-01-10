@@ -1,10 +1,12 @@
 //! Test support utilities - only compiled in test builds.
 
-use super::persist::NoPersist;
-use super::policy::{AccessPolicy, AllowAllPolicy, NoPersistPolicy};
-use super::staged::PatchStagingBuffer;
-use super::storage::ShadowStorage;
-use super::table::ShadowTable;
+use crate::shadow::{
+    persist::NoPersist,
+    policy::{AccessPolicy, AllowAllPolicy, NoPersistPolicy},
+    staged::PatchStagingBuffer,
+    storage::ShadowStorage,
+    table::ShadowTable,
+};
 
 /// Standard test configuration: 64 bytes, 16-byte blocks, 4 blocks
 pub type TestTable = ShadowTable<64, 16, 4>;

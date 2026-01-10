@@ -1,10 +1,10 @@
 //! Utility functions for address and block calculations.
 //!
-//! These helpers are useful when implementing custom [`AccessPolicy`](crate::AccessPolicy)
-//! or [`PersistPolicy`](crate::PersistPolicy) types that need to reason about
+//! These helpers are useful when implementing custom [`AccessPolicy`](crate::shadow::AccessPolicy)
+//! or [`PersistPolicy`](crate::shadow::PersistPolicy) types that need to reason about
 //! address ranges and block boundaries.
 
-use super::ShadowError;
+use crate::shadow::ShadowError;
 
 /// Calculates which blocks are spanned by an address range.
 ///

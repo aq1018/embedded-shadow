@@ -2,9 +2,7 @@
 
 use core::{cell::UnsafeCell, marker::PhantomData};
 
-use bitmaps::{Bits, BitsImpl};
-
-use super::{
+use crate::shadow::{
     ShadowError,
     handle::{HostShadow, KernelShadow},
     persist::PersistTrigger,
@@ -39,7 +37,7 @@ where
     AP: AccessPolicy,
     PP: PersistPolicy<PK>,
     PT: PersistTrigger<PK>,
-    BitsImpl<BC>: Bits,
+    bitmaps::BitsImpl<BC>: bitmaps::Bits,
 {
     pub(crate) table: UnsafeCell<ShadowTable<TS, BS, BC>>,
     pub(crate) access_policy: AP,
@@ -59,7 +57,7 @@ where
     AP: AccessPolicy,
     PP: PersistPolicy<PK>,
     PT: PersistTrigger<PK>,
-    BitsImpl<BC>: Bits,
+    bitmaps::BitsImpl<BC>: bitmaps::Bits,
 {
     pub fn new(policy: AP, persist: PP, trigger: PT) -> Self {
         Self {
@@ -97,7 +95,7 @@ where
     AP: AccessPolicy,
     PP: PersistPolicy<PK>,
     PT: PersistTrigger<PK>,
-    BitsImpl<BC>: Bits,
+    bitmaps::BitsImpl<BC>: bitmaps::Bits,
 {
     pub fn host_shadow(&self) -> HostShadow<'_, TS, BS, BC, AP, PP, PT, PK, SS> {
         HostShadow::new(self)

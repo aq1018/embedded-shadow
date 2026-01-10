@@ -1,8 +1,6 @@
 use core::marker::PhantomData;
 
-use bitmaps::{Bits, BitsImpl};
-
-use super::{
+use crate::shadow::{
     persist::{NoPersist, PersistTrigger},
     policy::{AccessPolicy, AllowAllPolicy, NoPersistPolicy, PersistPolicy},
     storage::ShadowStorage,
@@ -203,7 +201,7 @@ where
     AP: AccessPolicy,
     PP: PersistPolicy<PK>,
     PT: PersistTrigger<PK>,
-    BitsImpl<BC>: Bits,
+    bitmaps::BitsImpl<BC>: bitmaps::Bits,
 {
     /// Build the final ShadowStorage instance
     ///

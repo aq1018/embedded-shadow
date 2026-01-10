@@ -1,9 +1,8 @@
 use core::marker::PhantomData;
 
-use super::super::{
+use crate::shadow::{
     AccessPolicy, PersistTrigger, ShadowError, policy::PersistPolicy, table::ShadowTable,
 };
-use bitmaps::{Bits, BitsImpl};
 
 /// Application/host-side view of the shadow table.
 ///
@@ -11,7 +10,7 @@ use bitmaps::{Bits, BitsImpl};
 /// Reads and writes are subject to the configured access policy.
 pub struct HostView<'a, const TS: usize, const BS: usize, const BC: usize, AP, PP, PT, PK>
 where
-    BitsImpl<BC>: Bits,
+    bitmaps::BitsImpl<BC>: bitmaps::Bits,
     AP: AccessPolicy,
     PP: PersistPolicy<PK>,
     PT: PersistTrigger<PK>,
@@ -26,7 +25,7 @@ where
 impl<'a, const TS: usize, const BS: usize, const BC: usize, AP, PP, PT, PK>
     HostView<'a, TS, BS, BC, AP, PP, PT, PK>
 where
-    BitsImpl<BC>: Bits,
+    bitmaps::BitsImpl<BC>: bitmaps::Bits,
     AP: AccessPolicy,
     PP: PersistPolicy<PK>,
     PT: PersistTrigger<PK>,
