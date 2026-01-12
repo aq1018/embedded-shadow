@@ -1,35 +1,19 @@
 [package]
 name = "embedded-shadow"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2024"
 rust-version = "1.85"
 authors = ["Aaron Qian <aq1018@gmail.com>"]
 license = "MIT OR Apache-2.0"
-description = "Zero-alloc shadow register table with dirty tracking for embedded systems"
-documentation = "https://docs.rs/embedded-shadow"
-homepage = "https://github.com/aq1018/embedded-shadow"
-repository = "https://github.com/aq1018/embedded-shadow"
+description = "DEPRECATED: This crate has been renamed to embedded-registry"
+documentation = "https://docs.rs/embedded-registry"
+homepage = "https://github.com/aq1018/embedded-registry"
+repository = "https://github.com/aq1018/embedded-registry"
 readme = "README.md"
-keywords = ["embedded", "no-std", "registers", "shadow", "dirty-tracking"]
-categories = ["embedded", "no-std", "no-std::no-alloc", "data-structures"]
-exclude = [
-    "/.github/",
-    "/.claude/",
-    "/.zed/",
-    "/.vscode/",
-    "/.idea/",
-]
+keywords = ["deprecated", "embedded", "no-std", "registers"]
+categories = ["embedded", "no-std"]
 
 [workspace]
 
-[dependencies]
-critical-section = {version="1", default-features=false}
-bitmaps = {version="3", default-features=false}
-heapless = {version=">= 0.7, < 0.10", default-features=false}
-paste = {version="1", default-features=false}
-
-[dev-dependencies]
-critical-section = { version = "1.2", features = ["std"] }
-
-[features]
-default = []
+[badges]
+maintenance = { status = "deprecated" }
